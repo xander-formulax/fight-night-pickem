@@ -66,14 +66,18 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
     setForm((p) => ({ ...p, prize_splits: p.prize_splits.map((s, i) => i === idx ? { ...s, pct } : s) }))
   }
 
+  const [calcPlayers, setCalcPlayers] = useState('50')
+
   const splitTotal = form.prize_splits.reduce((s, r) => s + (parseFloat(r.pct) || 0), 0)
   const splitOk = form.prize_splits.length === 0 || Math.abs(splitTotal - 100) < 0.01
   const remaining = 100 - splitTotal
 
   const feeNum = parseFee(form.entry_fee)
   const houseCutNum = parseFloat(form.house_cut_pct) || 0
-  const samplePot = feeNum * 10 // preview based on 10 players
-  const samplePrizePot = samplePot * (1 - houseCutNum / 100)
+  const calcCount = Math.max(0, parseInt(calcPlayers) || 0)
+  const calcPot = feeNum * calcCount
+  const calcHouse = calcPot * (houseCutNum / 100)
+  const calcPrizePot = calcPot - calcHouse
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
@@ -99,8 +103,8 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
         <div className="flex items-center gap-2">
           <input type="number" min={0} max={100} value={form.house_cut_pct} onChange={(e) => set('house_cut_pct', e.target.value)} placeholder="0" className="w-24" style={{ background:'#1f2937', border:'1px solid #374151', borderRadius:'8px', padding:'6px 12px', color:'white', outline:'none', fontSize:'14px' }} />
           <span className="text-gray-400 text-sm">%</span>
-          {feeNum > 0 && houseCutNum > 0 && (
-            <span className="text-gray-500 text-xs">= ${(samplePot * houseCutNum / 100).toFixed(0)} of a ${samplePot.toFixed(0)} pot (10 players)</span>
+          {feeNum > 0 && houseCutNum > 0 && calcCount > 0 && (
+            <span className="text-gray-500 text-xs">= ${calcHouse.toFixed(0)} of a ${calcPot.toFixed(0)} pot ({calcCount} players)</span>
           )}
         </div>
       </div>
@@ -122,7 +126,7 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
         <div className="space-y-2">
           {form.prize_splits.map((split, idx) => {
             const pctNum = parseFloat(split.pct) || 0
-            const dollarPreview = feeNum > 0 && pctNum > 0 ? `≈ $${(samplePrizePot * pctNum / 100).toFixed(0)} / 10 players` : ''
+            const dollarPreview = feeNum > 0 && pctNum > 0 && calcCount > 0 ? `≈ $${(calcPrizePot * pctNum / 100).toFixed(0)}` : ''
             return (
               <div key={idx} className="flex items-center gap-2">
                 <span className="text-gray-400 text-sm w-8 shrink-0">{ordinal(split.place)}</span>
@@ -148,6 +152,67 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
           </div>
         )}
       </div>
+
+      {/* Prize Calculator */}
+      {feeNum > 0 && (
+        <div className="bg-gray-900 rounded-xl p-4 border border-gray-700/50">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Prize Calculator</p>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500">If</label>
+              <input
+                type="number" min={1} max={9999}
+                value={calcPlayers}
+                onChange={(e) => setCalcPlayers(e.target.value)}
+                className="w-16 text-center text-sm font-bold text-white bg-gray-800 border border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-red-500"
+              />
+              <label className="text-xs text-gray-500">buy in</label>
+            </div>
+          </div>
+
+          {calcCount > 0 ? (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Total pot</span>
+                <span className="text-white font-semibold">${calcPot.toLocaleString()}</span>
+              </div>
+              {houseCutNum > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">House cut ({houseCutNum}%)</span>
+                  <span className="text-orange-400 font-semibold">−${calcHouse.toLocaleString()}</span>
+                </div>
+              )}
+              {(houseCutNum > 0 || form.prize_splits.length > 0) && (
+                <div className="flex justify-between text-sm border-t border-gray-700 pt-1.5">
+                  <span className="text-gray-400">Prize pool</span>
+                  <span className="text-white font-bold">${calcPrizePot.toLocaleString()}</span>
+                </div>
+              )}
+              {form.prize_splits.length > 0 && (
+                <div className="space-y-1 pt-1">
+                  {form.prize_splits.map((s) => {
+                    const pct = parseFloat(s.pct) || 0
+                    const amt = calcPrizePot * (pct / 100)
+                    return (
+                      <div key={s.place} className="flex justify-between text-sm">
+                        <span className="text-gray-500">{ordinal(s.place)} place ({pct}%)</span>
+                        <span className={`font-bold ${s.place === 1 ? 'text-yellow-400' : s.place === 2 ? 'text-gray-300' : s.place === 3 ? 'text-amber-600' : 'text-green-400'}`}>
+                          ${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {form.prize_splits.length === 0 && houseCutNum === 0 && (
+                <p className="text-gray-700 text-xs italic">Add a house cut or prize splits above to see the breakdown.</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-700 text-xs italic">Enter a player count above.</p>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
       <div className="flex gap-3 pt-1">
