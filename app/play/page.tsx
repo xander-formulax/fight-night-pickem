@@ -38,7 +38,6 @@ export default function PlayPage() {
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
   const [selectedCompetitionId, setSelectedCompetitionId] = useState('')
-  const [tiebreaker, setTiebreaker] = useState('')
   const [picks, setPicks] = useState<Record<string, PickState>>({})
   const [error, setError] = useState('')
 
@@ -148,7 +147,6 @@ export default function PlayPage() {
         name,
         contact,
         competition_id: selectedCompetitionId,
-        tiebreaker,
         picks: picksToSubmit,
       }),
     })
@@ -218,10 +216,6 @@ export default function PlayPage() {
               <dd className="text-white font-semibold">
                 {selectedComp ? `${selectedComp.name} (${selectedComp.entry_fee})` : existingPlayer.tier}
               </dd>
-            </div>
-            <div>
-              <dt className="text-gray-500">Tiebreaker</dt>
-              <dd className="text-white">{existingPlayer.tiebreaker}</dd>
             </div>
           </dl>
         </div>
@@ -348,20 +342,6 @@ export default function PlayPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Tiebreaker</label>
-              <p className="text-xs text-gray-600 mb-2">
-                Total combined fight time for all fights &mdash; format M:SS, e.g. 14:32
-              </p>
-              <input
-                type="text"
-                value={tiebreaker}
-                onChange={(e) => setTiebreaker(e.target.value)}
-                required
-                placeholder="14:32"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
-              />
-            </div>
           </div>
 
           {/* Fight picks */}

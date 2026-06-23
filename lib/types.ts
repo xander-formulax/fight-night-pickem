@@ -29,7 +29,6 @@ export interface Player {
   competition_id?: string | null
   paid: boolean
   activated: boolean
-  tiebreaker: string
   created_at: string
 }
 

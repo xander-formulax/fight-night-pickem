@@ -645,7 +645,7 @@ export default function AdminPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-gray-800">
-                {['Name', 'Contact', 'Pool', 'Tiebreaker', 'Signed Up', 'Paid', 'Activated'].map((h) => (
+                {['Name', 'Contact', 'Pool', 'Signed Up', 'Paid', 'Activated'].map((h) => (
                   <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
@@ -665,7 +665,6 @@ export default function AdminPage() {
                           {comp ? `${comp.name} (${comp.entry_fee})` : player.tier}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-300 font-mono">{player.tiebreaker}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{new Date(player.created_at).toLocaleString()}</td>
                       <td className="px-4 py-3"><Toggle checked={player.paid} onChange={() => togglePlayer(player.id, 'paid', !player.paid)} color="green" /></td>
                       <td className="px-4 py-3"><Toggle checked={player.activated} onChange={() => togglePlayer(player.id, 'activated', !player.activated)} color="blue" /></td>
