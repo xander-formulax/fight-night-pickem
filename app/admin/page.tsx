@@ -645,7 +645,7 @@ export default function AdminPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-gray-800">
-                {['Name', 'Contact', 'Pool', 'Signed Up', 'Paid', 'Activated'].map((h) => (
+                {['Name', 'Pool', 'Signed Up', 'Paid', 'Activated'].map((h) => (
                   <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
@@ -659,7 +659,6 @@ export default function AdminPage() {
                   return (
                     <tr key={player.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                       <td className="px-4 py-3 text-white font-semibold">{player.name}</td>
-                      <td className="px-4 py-3 text-gray-300">{player.contact}</td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-900/40 text-red-300">
                           {comp ? `${comp.name} (${comp.entry_fee})` : player.tier}

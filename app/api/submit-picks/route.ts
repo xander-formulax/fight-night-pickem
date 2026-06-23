@@ -3,9 +3,9 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { name, contact, competition_id, picks } = body
+  const { name, competition_id, picks } = body
 
-  if (!name || !contact || !competition_id || !Array.isArray(picks) || picks.length === 0) {
+  if (!name || !competition_id || !Array.isArray(picks) || picks.length === 0) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     .from('players')
     .insert({
       name,
-      contact,
+      contact: '',
       tier: competition.entry_fee,
       competition_id,
       tiebreaker: '',

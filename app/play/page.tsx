@@ -13,6 +13,23 @@ interface PickState {
   round_pick: string
 }
 
+function winnerPts(odds: number): number {
+  if (odds > 0) return odds
+  if (odds < 0) return Math.round((100 / Math.abs(odds)) * 100)
+  return 100
+}
+
+const METHOD_PTS: Record<string, number> = { 'KO/TKO': 100, Submission: 150, Decision: 50 }
+
+function calcPotential(fight: Fight, pick: PickState | undefined) {
+  if (!pick?.winner_pick) return null
+  const odds = pick.winner_pick === fight.fighter_a ? fight.odds_a : fight.odds_b
+  const winner = winnerPts(odds)
+  const method = pick.method_pick ? (METHOD_PTS[pick.method_pick] ?? 0) : 0
+  const round = pick.method_pick && pick.method_pick !== 'Decision' && pick.round_pick ? 100 : 0
+  return { winner, method, round, total: winner + method + round }
+}
+
 function StatusBadge({ status }: { status: Fight['status'] }) {
   const cls =
     status === 'complete'
@@ -36,7 +53,6 @@ export default function PlayPage() {
   const [existingPicks, setExistingPicks] = useState<Pick[]>([])
 
   const [name, setName] = useState('')
-  const [contact, setContact] = useState('')
   const [selectedCompetitionId, setSelectedCompetitionId] = useState('')
   const [picks, setPicks] = useState<Record<string, PickState>>({})
   const [error, setError] = useState('')
@@ -145,7 +161,6 @@ export default function PlayPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name,
-        contact,
         competition_id: selectedCompetitionId,
         picks: picksToSubmit,
       }),
@@ -208,10 +223,6 @@ export default function PlayPage() {
               <dd className="text-white font-semibold">{existingPlayer.name}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Contact</dt>
-              <dd className="text-white">{existingPlayer.contact}</dd>
-            </div>
-            <div>
               <dt className="text-gray-500">Prize Pool</dt>
               <dd className="text-white font-semibold">
                 {selectedComp ? `${selectedComp.name} (${selectedComp.entry_fee})` : existingPlayer.tier}
@@ -265,8 +276,12 @@ export default function PlayPage() {
   }
 
   // ── Entry form ────────────────────────────────────────────────────────────
+  const upcomingFights = fights.filter((f) => f.status === 'upcoming')
+  const totalPotential = upcomingFights.reduce((sum, f) => sum + (calcPotential(f, picks[f.id])?.total ?? 0), 0)
+  const pickedCount = upcomingFights.filter((f) => picks[f.id]?.winner_pick).length
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className={`max-w-3xl mx-auto px-4 py-8 ${totalPotential > 0 ? 'pb-28' : ''}`}>
       <div className="text-center mb-8">
         <h1 className="text-4xl font-black text-red-500 tracking-tight">UFC FIGHT NIGHT</h1>
         <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
@@ -291,18 +306,6 @@ export default function PlayPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 placeholder="Your full name"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Contact Info</label>
-              <input
-                type="text"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
-                required
-                placeholder="Phone number or email"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
               />
             </div>
@@ -456,6 +459,36 @@ export default function PlayPage() {
                     </div>
                   )}
 
+                  {/* Potential points breakdown */}
+                  {!isLocked && (() => {
+                    const p = calcPotential(fight, pick)
+                    if (!p) return null
+                    return (
+                      <div className="mt-4 pt-3 border-t border-gray-800">
+                        <p className="text-xs text-gray-600 uppercase tracking-wider mb-2">Potential Points</p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="text-sm">
+                            <span className="text-gray-500">Winner</span>{' '}
+                            <span className="text-green-400 font-bold">+{p.winner}</span>
+                          </span>
+                          {pick?.method_pick && (
+                            <span className="text-sm text-gray-600">
+                              + <span className="text-gray-400">Method</span>{' '}
+                              <span className="text-blue-400 font-bold">+{p.method}</span>
+                            </span>
+                          )}
+                          {pick?.method_pick && pick.method_pick !== 'Decision' && pick.round_pick && (
+                            <span className="text-sm text-gray-600">
+                              + <span className="text-gray-400">Round</span>{' '}
+                              <span className="text-purple-400 font-bold">+{p.round}</span>
+                            </span>
+                          )}
+                          <span className="ml-auto text-white font-black text-xl">+{p.total} pts</span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {isLocked && (
                     <p className="mt-3 text-center text-xs font-bold text-yellow-500">
                       {fight.status === 'locked' ? 'PICKS LOCKED' : 'FIGHT COMPLETE'}
@@ -480,6 +513,19 @@ export default function PlayPage() {
             {submitting ? 'SUBMITTING...' : 'LOCK IN MY PICKS'}
           </button>
         </form>
+      )}
+
+      {/* Sticky running total */}
+      {totalPotential > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-50">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <div>
+              <p className="text-gray-500 text-xs">{pickedCount} of {upcomingFights.length} fights picked</p>
+              <p className="text-gray-400 text-sm font-medium">Max potential score</p>
+            </div>
+            <span className="text-green-400 font-black text-3xl">+{totalPotential}</span>
+          </div>
+        </div>
       )}
     </div>
   )

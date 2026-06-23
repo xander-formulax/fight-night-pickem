@@ -24,7 +24,7 @@ export interface Fight {
 export interface Player {
   id: string
   name: string
-  contact: string
+  contact?: string
   tier: string
   competition_id?: string | null
   paid: boolean
