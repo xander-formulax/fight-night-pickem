@@ -77,25 +77,32 @@ export async function GET() {
 
   const events: OddsEvent[] = await res.json()
 
-  // Group fights by date (YYYY-MM-DD)
-  const groups: Record<string, ImportedFight[]> = {}
-  for (const event of events) {
-    const date = event.commence_time.slice(0, 10)
-    const odds = pickOdds(event)
-    if (!odds) continue
-    if (!groups[date]) groups[date] = []
-    groups[date].push({
-      fighter_a: event.home_team,
-      fighter_b: event.away_team,
-      odds_a: odds.odds_a,
-      odds_b: odds.odds_b,
-      rounds: 3,
-    })
+  // Sort by time, then cluster fights within 48 hours of each cluster's start.
+  // This keeps all fights from one UFC card together even if commence times
+  // span a UTC midnight (e.g. Friday prelims + Saturday main card).
+  const withOdds = events
+    .map((e) => ({ event: e, odds: pickOdds(e) }))
+    .filter((x) => x.odds !== null)
+    .sort((a, b) => a.event.commence_time.localeCompare(b.event.commence_time))
+
+  const clusters: { startMs: number; date: string; fights: ImportedFight[] }[] = []
+  const MS_48H = 48 * 60 * 60 * 1000
+
+  for (const { event, odds } of withOdds) {
+    const t = new Date(event.commence_time).getTime()
+    const last = clusters[clusters.length - 1]
+    if (!last || t - last.startMs > MS_48H) {
+      clusters.push({
+        startMs: t,
+        date: event.commence_time.slice(0, 10),
+        fights: [{ fighter_a: event.home_team, fighter_b: event.away_team, odds_a: odds!.odds_a, odds_b: odds!.odds_b, rounds: 3 }],
+      })
+    } else {
+      last.fights.push({ fighter_a: event.home_team, fighter_b: event.away_team, odds_a: odds!.odds_a, odds_b: odds!.odds_b, rounds: 3 })
+    }
   }
 
-  const result: ImportEventGroup[] = Object.entries(groups)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, fights]) => ({ date, fights }))
+  const result: ImportEventGroup[] = clusters.map(({ date, fights }) => ({ date, fights }))
 
   return NextResponse.json({ events: result })
 }

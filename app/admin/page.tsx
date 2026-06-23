@@ -158,6 +158,22 @@ export default function AdminPage() {
   const [importEvents, setImportEvents] = useState<ImportEventGroup[]>([])
   const [importingSaving, setImportingSaving] = useState(false)
   const [importSuccess, setImportSuccess] = useState('')
+  const [selectedFights, setSelectedFights] = useState<Record<string, Set<number>>>({})
+
+  function toggleFight(date: string, idx: number) {
+    setSelectedFights((prev) => {
+      const s = new Set(prev[date] ?? [])
+      if (s.has(idx)) s.delete(idx); else s.add(idx)
+      return { ...prev, [date]: s }
+    })
+  }
+
+  function toggleAllFights(date: string, fights: ImportedFight[], checked: boolean) {
+    setSelectedFights((prev) => ({
+      ...prev,
+      [date]: checked ? new Set(fights.map((_, i) => i)) : new Set(),
+    }))
+  }
 
   // results
   const [resultForms, setResultForms] = useState<Record<string, ResultFormState>>({})
@@ -299,22 +315,33 @@ export default function AdminPage() {
     setImportError('')
     setImportEvents([])
     setImportSuccess('')
+    setSelectedFights({})
     const res = await fetch('/api/import-ufc-card')
     const data = await res.json()
     if (!res.ok) setImportError(data.error ?? 'Failed to fetch cards.')
     else if (!data.events?.length) setImportError('No upcoming MMA events with odds found yet. Try again closer to fight week.')
-    else setImportEvents(data.events)
+    else {
+      setImportEvents(data.events)
+      const initial: Record<string, Set<number>> = {}
+      ;(data.events as ImportEventGroup[]).forEach((g) => {
+        initial[g.date] = new Set(g.fights.map((_, i) => i))
+      })
+      setSelectedFights(initial)
+    }
     setImportLoading(false)
   }
 
-  async function importCard(eventFights: ImportedFight[]) {
+  async function importCard(group: ImportEventGroup) {
+    const selected = selectedFights[group.date] ?? new Set<number>()
+    const fightsToImport = group.fights.filter((_, i) => selected.has(i))
+    if (fightsToImport.length === 0) { setImportError('Select at least one fight.'); return }
     setImportingSaving(true)
     setImportSuccess('')
     const startNumber = fights.length > 0 ? Math.max(...fights.map((f) => f.fight_number)) + 1 : 1
     const res = await fetch('/api/import-fights', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fights: eventFights, start_number: startNumber }),
+      body: JSON.stringify({ fights: fightsToImport, start_number: startNumber }),
     })
     const data = await res.json()
     if (!res.ok) setImportError(data.error ?? 'Import failed.')
@@ -500,6 +527,8 @@ export default function AdminPage() {
                 {importEvents.map((group) => {
                   const d = new Date(group.date + 'T12:00:00')
                   const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                  const sel = selectedFights[group.date] ?? new Set<number>()
+                  const allChecked = sel.size === group.fights.length
                   return (
                     <div key={group.date} className="bg-gray-900 rounded-xl p-4">
                       <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
@@ -508,17 +537,32 @@ export default function AdminPage() {
                           <p className="text-gray-500 text-xs">{group.fights.length} fights with odds</p>
                         </div>
                         <button
-                          onClick={() => importCard(group.fights)}
-                          disabled={importingSaving}
-                          className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
+                          onClick={() => importCard(group)}
+                          disabled={importingSaving || sel.size === 0}
+                          className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
                         >
-                          {importingSaving ? 'Importing…' : `Import ${group.fights.length} Fights`}
+                          {importingSaving ? 'Importing…' : `Import ${sel.size} Fight${sel.size !== 1 ? 's' : ''}`}
                         </button>
                       </div>
-                      <div className="space-y-1.5">
+                      {/* Select all toggle */}
+                      <label className="flex items-center gap-2 text-xs text-gray-500 mb-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={allChecked}
+                          onChange={(e) => toggleAllFights(group.date, group.fights, e.target.checked)}
+                          className="w-3.5 h-3.5 accent-orange-500"
+                        />
+                        {allChecked ? 'Deselect all' : 'Select all'}
+                      </label>
+                      <div className="space-y-2">
                         {group.fights.map((f, i) => (
-                          <div key={i} className="flex items-center gap-2 text-sm">
-                            <span className="text-gray-600 w-4 text-right shrink-0">{i + 1}</span>
+                          <label key={i} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={sel.has(i)}
+                              onChange={() => toggleFight(group.date, i)}
+                              className="w-4 h-4 accent-orange-500 shrink-0"
+                            />
                             <span className="text-white font-semibold">{f.fighter_a}</span>
                             <span className={`text-xs font-bold ${f.odds_a > 0 ? 'text-green-400' : 'text-gray-500'}`}>
                               {f.odds_a > 0 ? `+${f.odds_a}` : f.odds_a}
@@ -528,7 +572,7 @@ export default function AdminPage() {
                             <span className={`text-xs font-bold ${f.odds_b > 0 ? 'text-green-400' : 'text-gray-500'}`}>
                               {f.odds_b > 0 ? `+${f.odds_b}` : f.odds_b}
                             </span>
-                          </div>
+                          </label>
                         ))}
                       </div>
                     </div>
