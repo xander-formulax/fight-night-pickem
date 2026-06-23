@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
 import type { Competition, Fight, Player } from '@/lib/types'
+import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
 // ─── shared primitives ─────────────────────────────────────────────────────
 
@@ -150,6 +151,14 @@ export default function AdminPage() {
   const [fightSaving, setFightSaving] = useState(false)
   const [fightError, setFightError] = useState('')
 
+  // import from odds api
+  const [showImport, setShowImport] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importError, setImportError] = useState('')
+  const [importEvents, setImportEvents] = useState<ImportEventGroup[]>([])
+  const [importingSaving, setImportingSaving] = useState(false)
+  const [importSuccess, setImportSuccess] = useState('')
+
   // results
   const [resultForms, setResultForms] = useState<Record<string, ResultFormState>>({})
   const [savingResults, setSavingResults] = useState<Record<string, boolean>>({})
@@ -283,6 +292,41 @@ export default function AdminPage() {
     }
   }
 
+  // ── import from odds api ──────────────────────────────────────────────────
+
+  async function fetchImportCards() {
+    setImportLoading(true)
+    setImportError('')
+    setImportEvents([])
+    setImportSuccess('')
+    const res = await fetch('/api/import-ufc-card')
+    const data = await res.json()
+    if (!res.ok) setImportError(data.error ?? 'Failed to fetch cards.')
+    else if (!data.events?.length) setImportError('No upcoming MMA events with odds found yet. Try again closer to fight week.')
+    else setImportEvents(data.events)
+    setImportLoading(false)
+  }
+
+  async function importCard(eventFights: ImportedFight[]) {
+    setImportingSaving(true)
+    setImportSuccess('')
+    const startNumber = fights.length > 0 ? Math.max(...fights.map((f) => f.fight_number)) + 1 : 1
+    const res = await fetch('/api/import-fights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fights: eventFights, start_number: startNumber }),
+    })
+    const data = await res.json()
+    if (!res.ok) setImportError(data.error ?? 'Import failed.')
+    else {
+      setImportSuccess(`Imported ${data.count} fight${data.count !== 1 ? 's' : ''}! Review and adjust rounds as needed.`)
+      setShowImport(false)
+      setImportEvents([])
+      await loadData()
+    }
+    setImportingSaving(false)
+  }
+
   // ── reset ─────────────────────────────────────────────────────────────────
 
   async function resetEvent() {
@@ -413,14 +457,87 @@ export default function AdminPage() {
 
       {/* ── SECTION 2: Fight Card Setup ───────────────────────────────────── */}
       <section className="mb-10">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <SectionHeader>Fight Card Setup</SectionHeader>
-          {!showAddFight && (
-            <button onClick={() => { setShowAddFight(true); setEditingFightId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
-              + Add Fight
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowImport((v) => !v); setImportError(''); setImportEvents([]); setImportSuccess('') }}
+              className="bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
+            >
+              Import from Odds API
             </button>
-          )}
+            {!showAddFight && (
+              <button onClick={() => { setShowAddFight(true); setEditingFightId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+                + Add Fight
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Import panel */}
+        {showImport && (
+          <div className="bg-gray-800 border border-orange-800/50 rounded-xl p-5 mb-4">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <p className="text-white font-bold">Import UFC Card from The Odds API</p>
+                <p className="text-gray-500 text-xs mt-0.5">Fetches upcoming MMA events with American odds. Rounds default to 3 — edit main/co-main events to 5 after import.</p>
+              </div>
+              <button onClick={() => { setShowImport(false); setImportEvents([]); setImportError(''); setImportSuccess('') }} className="text-gray-600 hover:text-gray-400 text-xl leading-none">&times;</button>
+            </div>
+
+            {importEvents.length === 0 && !importLoading && !importError && (
+              <button onClick={fetchImportCards} className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors">
+                Fetch Upcoming Cards
+              </button>
+            )}
+
+            {importLoading && <p className="text-gray-400 text-sm animate-pulse">Fetching from The Odds API…</p>}
+            {importError && <p className="text-red-400 text-sm">{importError}</p>}
+            {importSuccess && <p className="text-green-400 text-sm font-semibold">{importSuccess}</p>}
+
+            {importEvents.length > 0 && (
+              <div className="space-y-4 mt-3">
+                {importEvents.map((group) => {
+                  const d = new Date(group.date + 'T12:00:00')
+                  const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                  return (
+                    <div key={group.date} className="bg-gray-900 rounded-xl p-4">
+                      <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+                        <div>
+                          <p className="text-white font-bold">{label}</p>
+                          <p className="text-gray-500 text-xs">{group.fights.length} fights with odds</p>
+                        </div>
+                        <button
+                          onClick={() => importCard(group.fights)}
+                          disabled={importingSaving}
+                          className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
+                        >
+                          {importingSaving ? 'Importing…' : `Import ${group.fights.length} Fights`}
+                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {group.fights.map((f, i) => (
+                          <div key={i} className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600 w-4 text-right shrink-0">{i + 1}</span>
+                            <span className="text-white font-semibold">{f.fighter_a}</span>
+                            <span className={`text-xs font-bold ${f.odds_a > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                              {f.odds_a > 0 ? `+${f.odds_a}` : f.odds_a}
+                            </span>
+                            <span className="text-gray-600">vs</span>
+                            <span className="text-white font-semibold">{f.fighter_b}</span>
+                            <span className={`text-xs font-bold ${f.odds_b > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                              {f.odds_b > 0 ? `+${f.odds_b}` : f.odds_b}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {showAddFight && (
           <div className="mb-4">
