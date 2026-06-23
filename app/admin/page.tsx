@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
-import type { Competition, Fight, Player } from '@/lib/types'
+import type { Competition, Fight, Player, PrizeSplit } from '@/lib/types'
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
 // ─── shared primitives ─────────────────────────────────────────────────────
@@ -33,16 +33,50 @@ const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
 
 // ─── competition form ───────────────────────────────────────────────────────
 
-interface CompFormData { id?: string; name: string; entry_fee: string; description: string }
-const blankComp = (): CompFormData => ({ name: '', entry_fee: '', description: '' })
+interface SplitRow { place: number; pct: string }
+interface CompFormData { id?: string; name: string; entry_fee: string; description: string; house_cut_pct: string; prize_splits: SplitRow[] }
+const blankComp = (): CompFormData => ({ name: '', entry_fee: '', description: '', house_cut_pct: '0', prize_splits: [] })
+
+function ordinal(n: number) {
+  if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd'; return `${n}th`
+}
+
+function parseFee(fee: string) { return parseFloat(fee.replace(/[^0-9.]/g, '')) || 0 }
+
+function calcPrizeBreakdown(comp: Competition, playerCount: number) {
+  const pot = parseFee(comp.entry_fee) * playerCount
+  const house = pot * ((comp.house_cut_pct ?? 0) / 100)
+  const prizePot = pot - house
+  return { pot, house, prizePot, places: (comp.prize_splits ?? []).map(s => ({ place: s.place, pct: s.pct, amount: prizePot * (s.pct / 100) })) }
+}
 
 function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
   initial: CompFormData; onSave: (d: CompFormData) => void; onCancel: () => void; saving: boolean; error: string
 }) {
   const [form, setForm] = useState(initial)
   const set = (k: keyof CompFormData, v: string) => setForm((p) => ({ ...p, [k]: v }))
+
+  function addPlace() {
+    setForm((p) => ({ ...p, prize_splits: [...p.prize_splits, { place: p.prize_splits.length + 1, pct: '' }] }))
+  }
+  function removePlace(idx: number) {
+    setForm((p) => ({ ...p, prize_splits: p.prize_splits.filter((_, i) => i !== idx).map((s, i) => ({ ...s, place: i + 1 })) }))
+  }
+  function setSplitPct(idx: number, pct: string) {
+    setForm((p) => ({ ...p, prize_splits: p.prize_splits.map((s, i) => i === idx ? { ...s, pct } : s) }))
+  }
+
+  const splitTotal = form.prize_splits.reduce((s, r) => s + (parseFloat(r.pct) || 0), 0)
+  const splitOk = form.prize_splits.length === 0 || Math.abs(splitTotal - 100) < 0.01
+  const remaining = 100 - splitTotal
+
+  const feeNum = parseFee(form.entry_fee)
+  const houseCutNum = parseFloat(form.house_cut_pct) || 0
+  const samplePot = feeNum * 10 // preview based on 10 players
+  const samplePrizePot = samplePot * (1 - houseCutNum / 100)
+
   return (
-    <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-3">
+    <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs text-gray-400 mb-1">Pool Name</label>
@@ -55,8 +89,66 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
       </div>
       <div>
         <label className="block text-xs text-gray-400 mb-1">Description (optional — shown to players)</label>
-        <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. Winner takes $250" className={inputCls} />
+        <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. Top 3 places paid out" className={inputCls} />
       </div>
+
+      {/* House cut */}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">House Cut %</label>
+        <p className="text-xs text-gray-600 mb-1.5">Taken off the pot before prize splits — use for party expenses, supplies, etc.</p>
+        <div className="flex items-center gap-2">
+          <input type="number" min={0} max={100} value={form.house_cut_pct} onChange={(e) => set('house_cut_pct', e.target.value)} placeholder="0" className="w-24" style={{ background:'#1f2937', border:'1px solid #374151', borderRadius:'8px', padding:'6px 12px', color:'white', outline:'none', fontSize:'14px' }} />
+          <span className="text-gray-400 text-sm">%</span>
+          {feeNum > 0 && houseCutNum > 0 && (
+            <span className="text-gray-500 text-xs">= ${(samplePot * houseCutNum / 100).toFixed(0)} of a ${samplePot.toFixed(0)} pot (10 players)</span>
+          )}
+        </div>
+      </div>
+
+      {/* Prize splits */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <label className="block text-xs text-gray-400">Prize Splits</label>
+            <p className="text-xs text-gray-600">% of pot after house cut. Must total 100%.</p>
+          </div>
+          <button type="button" onClick={addPlace} className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg transition-colors">+ Add Place</button>
+        </div>
+
+        {form.prize_splits.length === 0 && (
+          <p className="text-gray-700 text-xs italic py-2">No splits set — click &ldquo;Add Place&rdquo; to configure payouts.</p>
+        )}
+
+        <div className="space-y-2">
+          {form.prize_splits.map((split, idx) => {
+            const pctNum = parseFloat(split.pct) || 0
+            const dollarPreview = feeNum > 0 && pctNum > 0 ? `≈ $${(samplePrizePot * pctNum / 100).toFixed(0)} / 10 players` : ''
+            return (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="text-gray-400 text-sm w-8 shrink-0">{ordinal(split.place)}</span>
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  value={split.pct}
+                  onChange={(e) => setSplitPct(idx, e.target.value)}
+                  placeholder="0"
+                  className="w-20"
+                  style={{ background:'#111827', border:'1px solid #374151', borderRadius:'8px', padding:'6px 10px', color:'white', outline:'none', fontSize:'14px' }}
+                />
+                <span className="text-gray-500 text-sm">%</span>
+                {dollarPreview && <span className="text-gray-600 text-xs">{dollarPreview}</span>}
+                <button type="button" onClick={() => removePlace(idx)} className="ml-auto text-gray-700 hover:text-red-500 text-xs transition-colors">Remove</button>
+              </div>
+            )
+          })}
+        </div>
+
+        {form.prize_splits.length > 0 && (
+          <div className={`mt-2 text-xs font-semibold ${splitOk ? 'text-green-500' : splitTotal > 100 ? 'text-red-400' : 'text-yellow-400'}`}>
+            {splitOk ? '✓ Splits total 100%' : splitTotal > 100 ? `${splitTotal.toFixed(1)}% — over by ${(splitTotal - 100).toFixed(1)}%` : `${splitTotal.toFixed(1)}% — ${remaining.toFixed(1)}% remaining`}
+          </div>
+        )}
+      </div>
+
       {error && <p className="text-red-400 text-sm">{error}</p>}
       <div className="flex gap-3 pt-1">
         <button onClick={() => onSave(form)} disabled={saving} className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors">
@@ -232,10 +324,15 @@ export default function AdminPage() {
   async function saveComp(data: CompFormData) {
     setCompError('')
     if (!data.name.trim() || !data.entry_fee.trim()) { setCompError('Name and entry fee are required.'); return }
+    const splits: PrizeSplit[] = data.prize_splits.map((s) => ({ place: s.place, pct: parseFloat(s.pct) || 0 }))
+    if (splits.length > 0) {
+      const total = splits.reduce((s, r) => s + r.pct, 0)
+      if (Math.abs(total - 100) > 0.01) { setCompError(`Prize splits must total 100% (currently ${total.toFixed(1)}%).`); return }
+    }
     setCompSaving(true)
     const res = await fetch('/api/upsert-competition', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: data.id, name: data.name, entry_fee: data.entry_fee, description: data.description }),
+      body: JSON.stringify({ id: data.id, name: data.name, entry_fee: data.entry_fee, description: data.description, house_cut_pct: parseFloat(data.house_cut_pct) || 0, prize_splits: splits }),
     })
     const result = await res.json()
     if (!res.ok) setCompError(result.error ?? 'Failed to save.')
@@ -453,7 +550,7 @@ export default function AdminPage() {
                 <div key={comp.id} className="bg-gray-900 rounded-xl p-5">
                   <p className="text-sm text-gray-400 mb-3">Editing: {comp.name}</p>
                   <CompetitionForm
-                    initial={{ id: comp.id, name: comp.name, entry_fee: comp.entry_fee, description: comp.description ?? '' }}
+                    initial={{ id: comp.id, name: comp.name, entry_fee: comp.entry_fee, description: comp.description ?? '', house_cut_pct: String(comp.house_cut_pct ?? 0), prize_splits: (comp.prize_splits ?? []).map((s) => ({ place: s.place, pct: String(s.pct) })) }}
                     onSave={saveComp}
                     onCancel={() => { setEditingCompId(null); setCompError('') }}
                     saving={compSaving}
@@ -465,12 +562,25 @@ export default function AdminPage() {
             return (
               <div key={comp.id} className="bg-gray-900 rounded-xl p-5 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-white font-bold text-lg">{comp.name}</span>
                     <span className="text-red-400 font-black">{comp.entry_fee}</span>
                     <span className="text-gray-500 text-sm">{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
                   </div>
                   {comp.description && <p className="text-gray-500 text-sm mt-0.5">{comp.description}</p>}
+                  {playerCount > 0 && (() => {
+                    const bk = calcPrizeBreakdown(comp, playerCount)
+                    if (bk.places.length === 0 && !comp.house_cut_pct) return null
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                        <span className="text-gray-500">Pot: <span className="text-white font-semibold">${bk.pot.toFixed(0)}</span></span>
+                        {(comp.house_cut_pct ?? 0) > 0 && <span className="text-gray-500">House: <span className="text-orange-400 font-semibold">${bk.house.toFixed(0)}</span> ({comp.house_cut_pct}%)</span>}
+                        {bk.places.map((p) => (
+                          <span key={p.place} className="text-gray-500">{ordinal(p.place)}: <span className="text-green-400 font-semibold">${p.amount.toFixed(0)}</span> ({p.pct}%)</span>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingCompId(comp.id); setShowAddComp(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>

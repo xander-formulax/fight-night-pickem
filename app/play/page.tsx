@@ -340,6 +340,19 @@ export default function PlayPage() {
                     {comp.description && (
                       <span className="text-gray-400 text-sm mt-1">{comp.description}</span>
                     )}
+                    {(comp.prize_splits ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
+                        {(comp.prize_splits ?? []).map((s) => (
+                          <span key={s.place} className="text-xs text-gray-500">
+                            {s.place === 1 ? '1st' : s.place === 2 ? '2nd' : s.place === 3 ? '3rd' : `${s.place}th`}
+                            {': '}<span className="text-green-400 font-semibold">{s.pct}%</span>
+                          </span>
+                        ))}
+                        {(comp.house_cut_pct ?? 0) > 0 && (
+                          <span className="text-xs text-gray-600">· {comp.house_cut_pct}% house</span>
+                        )}
+                      </div>
+                    )}
                   </label>
                 ))}
               </div>

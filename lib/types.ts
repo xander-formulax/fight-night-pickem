@@ -1,8 +1,15 @@
+export interface PrizeSplit {
+  place: number
+  pct: number
+}
+
 export interface Competition {
   id: string
   name: string
   entry_fee: string
   description?: string | null
+  house_cut_pct: number
+  prize_splits: PrizeSplit[]
   created_at: string
 }
 
