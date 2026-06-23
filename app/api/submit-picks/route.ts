@@ -3,17 +3,35 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { name, contact, tier, tiebreaker, picks } = body
+  const { name, contact, competition_id, tiebreaker, picks } = body
 
-  if (!name || !contact || !tier || !tiebreaker || !Array.isArray(picks) || picks.length === 0) {
+  if (!name || !contact || !competition_id || !tiebreaker || !Array.isArray(picks) || picks.length === 0) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   const supabase = getSupabaseAdmin()
 
+  const { data: competition } = await supabase
+    .from('competitions')
+    .select('entry_fee')
+    .eq('id', competition_id)
+    .single()
+
+  if (!competition) {
+    return NextResponse.json({ error: 'Competition not found' }, { status: 400 })
+  }
+
   const { data: player, error: playerError } = await supabase
     .from('players')
-    .insert({ name, contact, tier, tiebreaker, paid: false, activated: false })
+    .insert({
+      name,
+      contact,
+      tier: competition.entry_fee,
+      competition_id,
+      tiebreaker,
+      paid: false,
+      activated: false,
+    })
     .select()
     .single()
 

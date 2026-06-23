@@ -1,3 +1,11 @@
+export interface Competition {
+  id: string
+  name: string
+  entry_fee: string
+  description?: string | null
+  created_at: string
+}
+
 export interface Fight {
   id: string
   fight_number: number
@@ -17,7 +25,8 @@ export interface Player {
   id: string
   name: string
   contact: string
-  tier: '$25' | '$100'
+  tier: string
+  competition_id?: string | null
   paid: boolean
   activated: boolean
   tiebreaker: string

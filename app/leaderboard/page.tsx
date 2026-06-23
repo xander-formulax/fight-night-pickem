@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
-import type { Fight, Player, Score, PlayerWithScores } from '@/lib/types'
+import type { Competition, Fight, Player, Score, PlayerWithScores } from '@/lib/types'
 
 function FightStatusPill({ fight }: { fight: Fight }) {
   const base = 'px-3 py-2 rounded-lg text-center border text-xs font-bold'
@@ -12,15 +12,12 @@ function FightStatusPill({ fight }: { fight: Fight }) {
       : fight.status === 'locked'
       ? `${base} bg-yellow-900/40 border-yellow-700 text-yellow-300`
       : `${base} bg-gray-800 border-gray-700 text-gray-500`
-
   return (
     <div className={cls}>
       <div className="uppercase tracking-wide">F{fight.fight_number}</div>
-      <div className="mt-0.5 font-normal opacity-80 normal-case tracking-normal leading-tight">
+      <div className="mt-0.5 font-normal opacity-80 normal-case leading-tight">
         {fight.fighter_a}
-        <br />
-        vs
-        <br />
+        <br />vs<br />
         {fight.fighter_b}
       </div>
       {fight.result_winner && (
@@ -31,77 +28,69 @@ function FightStatusPill({ fight }: { fight: Fight }) {
 }
 
 function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1)
-    return (
-      <span className="text-3xl font-black text-yellow-400 w-10 text-center inline-block">1</span>
-    )
-  if (rank === 2)
-    return (
-      <span className="text-3xl font-black text-gray-300 w-10 text-center inline-block">2</span>
-    )
-  if (rank === 3)
-    return (
-      <span className="text-3xl font-black text-amber-600 w-10 text-center inline-block">3</span>
-    )
-  return (
-    <span className="text-2xl font-bold text-gray-600 w-10 text-center inline-block">{rank}</span>
-  )
+  const base = 'w-10 text-center inline-block font-black'
+  if (rank === 1) return <span className={`${base} text-3xl text-yellow-400`}>1</span>
+  if (rank === 2) return <span className={`${base} text-3xl text-gray-300`}>2</span>
+  if (rank === 3) return <span className={`${base} text-3xl text-amber-600`}>3</span>
+  return <span className={`${base} text-2xl text-gray-600`}>{rank}</span>
 }
 
 export default function LeaderboardPage() {
+  const [competitions, setCompetitions] = useState<Competition[]>([])
+  const [activeCompId, setActiveCompId] = useState<string>('')
   const [fights, setFights] = useState<Fight[]>([])
-  const [entries, setEntries] = useState<PlayerWithScores[]>([])
-  const [lastUpdate, setLastUpdate] = useState<string>('')
+  const [allPlayers, setAllPlayers] = useState<Player[]>([])
+  const [allScores, setAllScores] = useState<Score[]>([])
+  const [lastUpdate, setLastUpdate] = useState('')
 
-  const buildLeaderboard = useCallback(
-    (players: Player[], scores: Score[], fights: Fight[]) => {
+  const buildEntries = useCallback(
+    (players: Player[], scores: Score[], compId: string): PlayerWithScores[] => {
+      const filtered = players.filter((p) => p.competition_id === compId)
       const map: Record<string, PlayerWithScores> = {}
-      players.forEach((p) => {
-        map[p.id] = { player: p, scores: {}, total: 0 }
-      })
+      filtered.forEach((p) => { map[p.id] = { player: p, scores: {}, total: 0 } })
       scores.forEach((s) => {
         if (map[s.player_id]) {
           map[s.player_id].scores[s.fight_id] = s
           map[s.player_id].total += s.fight_total
         }
       })
-      setFights(fights)
-      setEntries(
-        Object.values(map).sort((a, b) => b.total - a.total)
-      )
-      setLastUpdate(new Date().toLocaleTimeString())
+      return Object.values(map).sort((a, b) => b.total - a.total)
     },
     []
   )
 
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
-    const [{ data: fightsData }, { data: playersData }, { data: scoresData }] = await Promise.all([
-      supabase.from('fights').select('*').order('fight_number'),
-      supabase.from('players').select('*'),
-      supabase.from('scores').select('*'),
-    ])
+    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }] =
+      await Promise.all([
+        supabase.from('competitions').select('*').order('created_at'),
+        supabase.from('fights').select('*').order('fight_number'),
+        supabase.from('players').select('*'),
+        supabase.from('scores').select('*'),
+      ])
 
-    if (fightsData && playersData && scoresData) {
-      buildLeaderboard(playersData, scoresData, fightsData)
+    if (compsData) {
+      setCompetitions(compsData)
+      setActiveCompId((prev) => prev || compsData[0]?.id || '')
     }
-  }, [buildLeaderboard])
+    if (fightsData) setFights(fightsData)
+    if (playersData) setAllPlayers(playersData)
+    if (scoresData) setAllScores(scoresData)
+    setLastUpdate(new Date().toLocaleTimeString())
+  }, [])
 
   useEffect(() => {
     loadData()
-
     const supabase = getSupabaseBrowser()
     const channel = supabase
       .channel('leaderboard-scores')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'scores' },
-        () => { loadData() }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, () => loadData())
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [loadData])
+
+  const activeComp = competitions.find((c) => c.id === activeCompId)
+  const entries = activeCompId ? buildEntries(allPlayers, allScores, activeCompId) : []
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
@@ -114,23 +103,52 @@ export default function LeaderboardPage() {
           LEADERBOARD
         </h2>
         {lastUpdate && (
-          <p className="text-gray-600 text-sm mt-2">
-            Live &bull; {lastUpdate}
-          </p>
+          <p className="text-gray-600 text-sm mt-2">Live &bull; {lastUpdate}</p>
         )}
       </div>
 
-      {/* Fight Status Row */}
-      {fights.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {fights.map((f) => (
-            <FightStatusPill key={f.id} fight={f} />
+      {/* Competition tabs */}
+      {competitions.length > 1 && (
+        <div className="flex flex-wrap justify-center gap-3 mb-6">
+          {competitions.map((comp) => (
+            <button
+              key={comp.id}
+              onClick={() => setActiveCompId(comp.id)}
+              className={`px-6 py-3 rounded-xl font-black text-lg md:text-xl transition-colors ${
+                activeCompId === comp.id
+                  ? 'bg-red-600 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+              }`}
+            >
+              {comp.name}
+              <span className={`ml-2 text-base font-bold ${activeCompId === comp.id ? 'text-red-200' : 'text-gray-600'}`}>
+                {comp.entry_fee}
+              </span>
+            </button>
           ))}
         </div>
       )}
 
-      {/* Table */}
-      {entries.length === 0 ? (
+      {/* Active competition label (single comp) */}
+      {competitions.length === 1 && activeComp && (
+        <p className="text-center text-gray-500 text-sm mb-6">
+          {activeComp.name} &bull; {activeComp.entry_fee}
+        </p>
+      )}
+
+      {/* Fight status row */}
+      {fights.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2 mb-8">
+          {fights.map((f) => <FightStatusPill key={f.id} fight={f} />)}
+        </div>
+      )}
+
+      {/* Leaderboard table */}
+      {competitions.length === 0 ? (
+        <div className="text-center text-gray-700 text-3xl font-black mt-20 tracking-widest">
+          NO COMPETITIONS SET UP
+        </div>
+      ) : entries.length === 0 ? (
         <div className="text-center text-gray-700 text-3xl font-black mt-20 tracking-widest">
           WAITING FOR PLAYERS
         </div>
@@ -151,11 +169,8 @@ export default function LeaderboardPage() {
                     <div>F{f.fight_number}</div>
                     <div
                       className={`w-2 h-2 rounded-full mx-auto mt-1 ${
-                        f.status === 'complete'
-                          ? 'bg-green-500'
-                          : f.status === 'locked'
-                          ? 'bg-yellow-500'
-                          : 'bg-gray-700'
+                        f.status === 'complete' ? 'bg-green-500' :
+                        f.status === 'locked' ? 'bg-yellow-500' : 'bg-gray-700'
                       }`}
                     />
                   </th>
@@ -170,37 +185,27 @@ export default function LeaderboardPage() {
                 const rank = idx + 1
                 const isFirst = rank === 1
                 const isTop3 = rank <= 3
-
                 return (
                   <tr
                     key={entry.player.id}
                     className={`border-b border-gray-800/40 ${
-                      isFirst
-                        ? 'bg-yellow-900/10'
-                        : isTop3
-                        ? 'bg-gray-800/10'
-                        : ''
+                      isFirst ? 'bg-yellow-900/10' : isTop3 ? 'bg-gray-800/10' : ''
                     }`}
                   >
                     <td className="py-4 pr-3 text-right">
                       <RankBadge rank={rank} />
                     </td>
-
                     <td className="py-4 pr-4">
                       <div
                         className={`font-black tracking-tight leading-none ${
-                          isFirst
-                            ? 'text-3xl md:text-4xl text-yellow-300'
-                            : isTop3
-                            ? 'text-2xl md:text-3xl text-white'
-                            : 'text-xl md:text-2xl text-gray-200'
+                          isFirst ? 'text-3xl md:text-4xl text-yellow-300' :
+                          isTop3 ? 'text-2xl md:text-3xl text-white' :
+                          'text-xl md:text-2xl text-gray-200'
                         }`}
                       >
                         {entry.player.name}
                       </div>
-                      <div className="text-gray-600 text-xs mt-0.5">{entry.player.tier}</div>
                     </td>
-
                     {fights.map((f) => {
                       const score = entry.scores[f.id]
                       return (
@@ -209,28 +214,17 @@ export default function LeaderboardPage() {
                             <div>
                               <div
                                 className={`font-black ${
-                                  isFirst
-                                    ? 'text-2xl md:text-3xl'
-                                    : isTop3
-                                    ? 'text-xl md:text-2xl'
-                                    : 'text-lg md:text-xl'
-                                } ${
-                                  score.fight_total > 0 ? 'text-green-400' : 'text-gray-700'
-                                }`}
+                                  isFirst ? 'text-2xl md:text-3xl' :
+                                  isTop3 ? 'text-xl md:text-2xl' : 'text-lg md:text-xl'
+                                } ${score.fight_total > 0 ? 'text-green-400' : 'text-gray-700'}`}
                               >
                                 {score.fight_total || '—'}
                               </div>
                               {score.fight_total > 0 && (
                                 <div className="text-gray-600 text-xs mt-0.5 leading-tight">
-                                  {score.winner_pts > 0 && (
-                                    <span>W:{score.winner_pts}</span>
-                                  )}
-                                  {score.method_pts > 0 && (
-                                    <span className="ml-1">M:{score.method_pts}</span>
-                                  )}
-                                  {score.round_pts > 0 && (
-                                    <span className="ml-1">R:{score.round_pts}</span>
-                                  )}
+                                  {score.winner_pts > 0 && <span>W:{score.winner_pts}</span>}
+                                  {score.method_pts > 0 && <span className="ml-1">M:{score.method_pts}</span>}
+                                  {score.round_pts > 0 && <span className="ml-1">R:{score.round_pts}</span>}
                                 </div>
                               )}
                             </div>
@@ -240,15 +234,12 @@ export default function LeaderboardPage() {
                         </td>
                       )
                     })}
-
                     <td className="py-4 pl-4 text-center">
                       <span
                         className={`font-black ${
-                          isFirst
-                            ? 'text-5xl md:text-6xl text-yellow-300'
-                            : isTop3
-                            ? 'text-4xl md:text-5xl text-white'
-                            : 'text-3xl md:text-4xl text-gray-300'
+                          isFirst ? 'text-5xl md:text-6xl text-yellow-300' :
+                          isTop3 ? 'text-4xl md:text-5xl text-white' :
+                          'text-3xl md:text-4xl text-gray-300'
                         }`}
                       >
                         {entry.total}

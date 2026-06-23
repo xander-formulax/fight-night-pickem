@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
-import type { Fight, Player, Pick } from '@/lib/types'
+import type { Competition, Fight, Player, Pick } from '@/lib/types'
 
 type Method = 'KO/TKO' | 'Submission' | 'Decision'
 
@@ -28,6 +28,7 @@ function StatusBadge({ status }: { status: Fight['status'] }) {
 }
 
 export default function PlayPage() {
+  const [competitions, setCompetitions] = useState<Competition[]>([])
   const [fights, setFights] = useState<Fight[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -36,7 +37,7 @@ export default function PlayPage() {
 
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
-  const [tier, setTier] = useState<'$25' | '$100'>('$25')
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState('')
   const [tiebreaker, setTiebreaker] = useState('')
   const [picks, setPicks] = useState<Record<string, PickState>>({})
   const [error, setError] = useState('')
@@ -44,11 +45,12 @@ export default function PlayPage() {
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
 
-    const { data: fightsData } = await supabase
-      .from('fights')
-      .select('*')
-      .order('fight_number')
+    const [{ data: compsData }, { data: fightsData }] = await Promise.all([
+      supabase.from('competitions').select('*').order('created_at'),
+      supabase.from('fights').select('*').order('fight_number'),
+    ])
 
+    if (compsData) setCompetitions(compsData)
     if (fightsData) {
       setFights(fightsData)
       setPicks((prev) => {
@@ -69,7 +71,6 @@ export default function PlayPage() {
         .select('*')
         .eq('id', playerId)
         .single()
-
       if (playerData) {
         setExistingPlayer(playerData)
         const { data: picksData } = await supabase
@@ -83,9 +84,7 @@ export default function PlayPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+  useEffect(() => { loadData() }, [loadData])
 
   function updatePick(fightId: string, field: keyof PickState, value: string) {
     setPicks((prev) => ({
@@ -101,6 +100,11 @@ export default function PlayPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+
+    if (!selectedCompetitionId) {
+      setError('Please select a prize pool to enter.')
+      return
+    }
 
     const upcomingFights = fights.filter((f) => f.status === 'upcoming')
 
@@ -121,7 +125,7 @@ export default function PlayPage() {
     }
 
     if (upcomingFights.length === 0) {
-      setError('No open fights to submit picks for.')
+      setError('No open fights available for picks.')
       return
     }
 
@@ -140,7 +144,13 @@ export default function PlayPage() {
     const res = await fetch('/api/submit-picks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, contact, tier, tiebreaker, picks: picksToSubmit }),
+      body: JSON.stringify({
+        name,
+        contact,
+        competition_id: selectedCompetitionId,
+        tiebreaker,
+        picks: picksToSubmit,
+      }),
     })
 
     const result = await res.json()
@@ -159,11 +169,14 @@ export default function PlayPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl text-gray-400 animate-pulse">Loading fights...</div>
+        <div className="text-xl text-gray-400 animate-pulse">Loading...</div>
       </div>
     )
   }
 
+  const selectedComp = competitions.find((c) => c.id === existingPlayer?.competition_id)
+
+  // ── Confirmation view ─────────────────────────────────────────────────────
   if (existingPlayer) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
@@ -177,11 +190,15 @@ export default function PlayPage() {
             <p className="text-yellow-300 font-bold text-lg">
               Your picks are locked until payment is confirmed.
             </p>
-            <p className="text-yellow-500 text-sm mt-1">Contact the organizer to complete your payment.</p>
+            <p className="text-yellow-500 text-sm mt-1">
+              Contact the organizer to complete your payment.
+            </p>
           </div>
         ) : (
           <div className="bg-green-900/40 border border-green-600 rounded-xl p-5 mb-6 text-center">
-            <p className="text-green-300 font-bold text-lg">Your entry is confirmed and activated!</p>
+            <p className="text-green-300 font-bold text-lg">
+              Your entry is confirmed and activated!
+            </p>
           </div>
         )}
 
@@ -197,8 +214,10 @@ export default function PlayPage() {
               <dd className="text-white">{existingPlayer.contact}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Tier</dt>
-              <dd className="text-white font-semibold">{existingPlayer.tier}</dd>
+              <dt className="text-gray-500">Prize Pool</dt>
+              <dd className="text-white font-semibold">
+                {selectedComp ? `${selectedComp.name} (${selectedComp.entry_fee})` : existingPlayer.tier}
+              </dd>
             </div>
             <div>
               <dt className="text-gray-500">Tiebreaker</dt>
@@ -230,11 +249,14 @@ export default function PlayPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-600 italic">Fight was locked before submission</div>
+                  <div className="text-sm text-gray-600 italic">
+                    Fight was locked before submission
+                  </div>
                 )}
                 {fight.status === 'complete' && fight.result_winner && (
                   <div className="mt-2 text-xs text-gray-500">
-                    Result: <span className="text-white">{fight.result_winner}</span>
+                    Result:{' '}
+                    <span className="text-white">{fight.result_winner}</span>
                     {' by '}
                     <span className="text-white">{fight.result_method}</span>
                     {fight.result_round != null && ` (Round ${fight.result_round})`}
@@ -248,6 +270,7 @@ export default function PlayPage() {
     )
   }
 
+  // ── Entry form ────────────────────────────────────────────────────────────
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="text-center mb-8">
@@ -256,211 +279,228 @@ export default function PlayPage() {
         <p className="text-gray-500 mt-2 text-sm">Submit your picks for tonight's fights</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-gray-900 rounded-xl p-6 space-y-4">
-          <h2 className="text-lg font-bold text-white">Your Info</h2>
+      {competitions.length === 0 ? (
+        <div className="bg-gray-900 rounded-xl p-10 text-center text-gray-500">
+          No prize pools are set up yet. Check back soon.
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Player info */}
+          <div className="bg-gray-900 rounded-xl p-6 space-y-4">
+            <h2 className="text-lg font-bold text-white">Your Info</h2>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              placeholder="Your full name"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="Your full name"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Contact Info</label>
-            <input
-              type="text"
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              required
-              placeholder="Phone number or email"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Contact Info</label>
+              <input
+                type="text"
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                required
+                placeholder="Phone number or email"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Entry Tier</label>
-            <div className="grid grid-cols-2 gap-3">
-              {(['$25', '$100'] as const).map((t) => (
-                <label
-                  key={t}
-                  className={`flex items-center justify-center py-3 rounded-xl border-2 cursor-pointer transition-all font-black text-2xl ${
-                    tier === t
-                      ? 'border-red-500 bg-red-900/30 text-white'
-                      : 'border-gray-700 text-gray-500 hover:border-gray-500'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="tier"
-                    value={t}
-                    checked={tier === t}
-                    onChange={() => setTier(t)}
-                    className="sr-only"
-                  />
-                  {t}
-                </label>
-              ))}
+            {/* Competition selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Choose Your Prize Pool
+              </label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {competitions.map((comp) => (
+                  <label
+                    key={comp.id}
+                    className={`flex flex-col p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      selectedCompetitionId === comp.id
+                        ? 'border-red-500 bg-red-900/20'
+                        : 'border-gray-700 hover:border-gray-500'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="competition"
+                      value={comp.id}
+                      checked={selectedCompetitionId === comp.id}
+                      onChange={() => setSelectedCompetitionId(comp.id)}
+                      className="sr-only"
+                    />
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-white font-bold text-lg">{comp.name}</span>
+                      <span className="text-red-400 font-black text-xl">{comp.entry_fee}</span>
+                    </div>
+                    {comp.description && (
+                      <span className="text-gray-400 text-sm mt-1">{comp.description}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Tiebreaker</label>
+              <p className="text-xs text-gray-600 mb-2">
+                Total combined fight time for all fights &mdash; format M:SS, e.g. 14:32
+              </p>
+              <input
+                type="text"
+                value={tiebreaker}
+                onChange={(e) => setTiebreaker(e.target.value)}
+                required
+                placeholder="14:32"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
+              />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Tiebreaker</label>
-            <p className="text-xs text-gray-600 mb-2">
-              Total combined fight time for all 5 fights &mdash; format M:SS, e.g. 14:32
-            </p>
-            <input
-              type="text"
-              value={tiebreaker}
-              onChange={(e) => setTiebreaker(e.target.value)}
-              required
-              placeholder="14:32"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
-            />
-          </div>
-        </div>
+          {/* Fight picks */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-white">Your Picks</h2>
 
-        <div className="space-y-4">
-          <h2 className="text-lg font-bold text-white">Your Picks</h2>
+            {fights.length === 0 && (
+              <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-600">
+                Fights not posted yet. Check back soon.
+              </div>
+            )}
 
-          {fights.map((fight) => {
-            const pick = picks[fight.id]
-            const isLocked = fight.status === 'locked' || fight.status === 'complete'
+            {fights.map((fight) => {
+              const pick = picks[fight.id]
+              const isLocked = fight.status === 'locked' || fight.status === 'complete'
 
-            return (
-              <div
-                key={fight.id}
-                className={`bg-gray-900 rounded-xl p-6 transition-opacity ${isLocked ? 'opacity-50' : ''}`}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-gray-500 text-xs font-semibold tracking-wider">
-                    FIGHT {fight.fight_number} &bull; {fight.rounds} ROUNDS
-                  </span>
-                  <StatusBadge status={fight.status} />
-                </div>
+              return (
+                <div
+                  key={fight.id}
+                  className={`bg-gray-900 rounded-xl p-6 transition-opacity ${isLocked ? 'opacity-50' : ''}`}
+                >
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-gray-500 text-xs font-semibold tracking-wider">
+                      FIGHT {fight.fight_number} &bull; {fight.rounds} ROUNDS
+                    </span>
+                    <StatusBadge status={fight.status} />
+                  </div>
 
-                <div className="mb-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Winner</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { fighter: fight.fighter_a, odds: fight.odds_a },
-                      { fighter: fight.fighter_b, odds: fight.odds_b },
-                    ].map(({ fighter, odds }) => (
-                      <label
-                        key={fighter}
-                        className={`flex flex-col items-center py-3 px-2 rounded-xl border-2 transition-all ${
-                          isLocked
-                            ? 'cursor-not-allowed'
-                            : 'cursor-pointer'
-                        } ${
-                          pick?.winner_pick === fighter
-                            ? 'border-red-500 bg-red-900/30'
-                            : 'border-gray-700 hover:border-gray-500'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name={`winner_${fight.id}`}
-                          value={fighter}
-                          checked={pick?.winner_pick === fighter}
-                          onChange={() => !isLocked && updatePick(fight.id, 'winner_pick', fighter)}
-                          disabled={isLocked}
-                          className="sr-only"
-                        />
-                        <span className="text-white font-bold text-center text-sm leading-tight">
-                          {fighter}
-                        </span>
-                        <span
-                          className={`text-sm font-bold mt-1 ${
-                            odds > 0 ? 'text-green-400' : 'text-gray-400'
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Winner</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { fighter: fight.fighter_a, odds: fight.odds_a },
+                        { fighter: fight.fighter_b, odds: fight.odds_b },
+                      ].map(({ fighter, odds }) => (
+                        <label
+                          key={fighter}
+                          className={`flex flex-col items-center py-3 px-2 rounded-xl border-2 transition-all ${
+                            isLocked ? 'cursor-not-allowed' : 'cursor-pointer'
+                          } ${
+                            pick?.winner_pick === fighter
+                              ? 'border-red-500 bg-red-900/30'
+                              : 'border-gray-700 hover:border-gray-500'
                           }`}
                         >
-                          {formatOdds(odds)}
-                        </span>
-                      </label>
-                    ))}
+                          <input
+                            type="radio"
+                            name={`winner_${fight.id}`}
+                            value={fighter}
+                            checked={pick?.winner_pick === fighter}
+                            onChange={() => !isLocked && updatePick(fight.id, 'winner_pick', fighter)}
+                            disabled={isLocked}
+                            className="sr-only"
+                          />
+                          <span className="text-white font-bold text-center text-sm leading-tight">
+                            {fighter}
+                          </span>
+                          <span
+                            className={`text-sm font-bold mt-1 ${odds > 0 ? 'text-green-400' : 'text-gray-400'}`}
+                          >
+                            {formatOdds(odds)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="mb-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Method</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['KO/TKO', 'Submission', 'Decision'] as Method[]).map((method) => (
-                      <label
-                        key={method}
-                        className={`flex items-center justify-center py-2.5 px-2 rounded-xl border-2 text-sm font-semibold transition-all ${
-                          isLocked ? 'cursor-not-allowed' : 'cursor-pointer'
-                        } ${
-                          pick?.method_pick === method
-                            ? 'border-orange-500 bg-orange-900/30 text-white'
-                            : 'border-gray-700 text-gray-500 hover:border-gray-500'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name={`method_${fight.id}`}
-                          value={method}
-                          checked={pick?.method_pick === method}
-                          onChange={() => !isLocked && updatePick(fight.id, 'method_pick', method)}
-                          disabled={isLocked}
-                          className="sr-only"
-                        />
-                        {method}
-                      </label>
-                    ))}
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Method</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['KO/TKO', 'Submission', 'Decision'] as Method[]).map((method) => (
+                        <label
+                          key={method}
+                          className={`flex items-center justify-center py-2.5 px-2 rounded-xl border-2 text-sm font-semibold transition-all ${
+                            isLocked ? 'cursor-not-allowed' : 'cursor-pointer'
+                          } ${
+                            pick?.method_pick === method
+                              ? 'border-orange-500 bg-orange-900/30 text-white'
+                              : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`method_${fight.id}`}
+                            value={method}
+                            checked={pick?.method_pick === method}
+                            onChange={() => !isLocked && updatePick(fight.id, 'method_pick', method)}
+                            disabled={isLocked}
+                            className="sr-only"
+                          />
+                          {method}
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {pick?.method_pick && pick.method_pick !== 'Decision' && (
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
-                      Pick the Round
+                  {pick?.method_pick && pick.method_pick !== 'Decision' && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Round</p>
+                      <input
+                        type="number"
+                        min={1}
+                        max={fight.rounds}
+                        value={pick.round_pick}
+                        onChange={(e) =>
+                          !isLocked && updatePick(fight.id, 'round_pick', e.target.value)
+                        }
+                        disabled={isLocked}
+                        placeholder={`1 – ${fight.rounds}`}
+                        className="w-32 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors"
+                      />
+                    </div>
+                  )}
+
+                  {isLocked && (
+                    <p className="mt-3 text-center text-xs font-bold text-yellow-500">
+                      {fight.status === 'locked' ? 'PICKS LOCKED' : 'FIGHT COMPLETE'}
                     </p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={fight.rounds}
-                      value={pick.round_pick}
-                      onChange={(e) =>
-                        !isLocked && updatePick(fight.id, 'round_pick', e.target.value)
-                      }
-                      disabled={isLocked}
-                      placeholder={`1 – ${fight.rounds}`}
-                      className="w-32 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors"
-                    />
-                  </div>
-                )}
-
-                {isLocked && (
-                  <p className="mt-3 text-center text-xs font-bold text-yellow-500">
-                    {fight.status === 'locked' ? 'PICKS LOCKED' : 'FIGHT COMPLETE'}
-                  </p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {error && (
-          <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">
-            {error}
+                  )}
+                </div>
+              )
+            })}
           </div>
-        )}
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
-        >
-          {submitting ? 'SUBMITTING...' : 'LOCK IN MY PICKS'}
-        </button>
-      </form>
+          {error && (
+            <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
+          >
+            {submitting ? 'SUBMITTING...' : 'LOCK IN MY PICKS'}
+          </button>
+        </form>
+      )}
     </div>
   )
 }
