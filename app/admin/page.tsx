@@ -572,6 +572,7 @@ export default function AdminPage() {
                             <span className={`text-xs font-bold ${f.odds_b > 0 ? 'text-green-400' : 'text-gray-500'}`}>
                               {f.odds_b > 0 ? `+${f.odds_b}` : f.odds_b}
                             </span>
+                            {f.book && <span className="text-gray-700 text-xs ml-1">{f.book}</span>}
                           </label>
                         ))}
                       </div>

@@ -29,6 +29,7 @@ export interface ImportedFight {
   odds_a: number
   odds_b: number
   rounds: number
+  book?: string
 }
 
 export interface ImportEventGroup {
@@ -38,7 +39,16 @@ export interface ImportEventGroup {
 
 const PREFERRED_BOOKS = ['draftkings', 'fanduel', 'betmgm', 'caesars', 'pointsbetus', 'betonlineag']
 
-function pickOdds(event: OddsEvent): { odds_a: number; odds_b: number } | null {
+const BOOK_DISPLAY_NAMES: Record<string, string> = {
+  draftkings: 'DraftKings',
+  fanduel: 'FanDuel',
+  betmgm: 'BetMGM',
+  caesars: 'Caesars',
+  pointsbetus: 'PointsBet',
+  betonlineag: 'BetOnline',
+}
+
+function pickOdds(event: OddsEvent): { odds_a: number; odds_b: number; book: string } | null {
   const sources = [
     ...PREFERRED_BOOKS.map((k) => event.bookmakers.find((b) => b.key === k)).filter(Boolean),
     ...event.bookmakers,
@@ -49,7 +59,11 @@ function pickOdds(event: OddsEvent): { odds_a: number; odds_b: number } | null {
     if (!market) continue
     const a = market.outcomes.find((o) => o.name === event.home_team)
     const b = market.outcomes.find((o) => o.name === event.away_team)
-    if (a && b) return { odds_a: a.price, odds_b: b.price }
+    if (a && b) return {
+      odds_a: a.price,
+      odds_b: b.price,
+      book: BOOK_DISPLAY_NAMES[book.key] ?? book.key,
+    }
   }
   return null
 }
@@ -95,10 +109,10 @@ export async function GET() {
       clusters.push({
         startMs: t,
         date: event.commence_time.slice(0, 10),
-        fights: [{ fighter_a: event.home_team, fighter_b: event.away_team, odds_a: odds!.odds_a, odds_b: odds!.odds_b, rounds: 3 }],
+        fights: [{ fighter_a: event.home_team, fighter_b: event.away_team, odds_a: odds!.odds_a, odds_b: odds!.odds_b, rounds: 3, book: odds!.book }],
       })
     } else {
-      last.fights.push({ fighter_a: event.home_team, fighter_b: event.away_team, odds_a: odds!.odds_a, odds_b: odds!.odds_b, rounds: 3 })
+      last.fights.push({ fighter_a: event.home_team, fighter_b: event.away_team, odds_a: odds!.odds_a, odds_b: odds!.odds_b, rounds: 3, book: odds!.book })
     }
   }
 
