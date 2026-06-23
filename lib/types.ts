@@ -1,0 +1,50 @@
+export interface Fight {
+  id: string
+  fight_number: number
+  fighter_a: string
+  fighter_b: string
+  odds_a: number
+  odds_b: number
+  rounds: number
+  status: 'upcoming' | 'locked' | 'complete'
+  result_winner?: string | null
+  result_method?: 'KO/TKO' | 'Submission' | 'Decision' | null
+  result_round?: number | null
+  created_at: string
+}
+
+export interface Player {
+  id: string
+  name: string
+  contact: string
+  tier: '$25' | '$100'
+  paid: boolean
+  activated: boolean
+  tiebreaker: string
+  created_at: string
+}
+
+export interface Pick {
+  id: string
+  player_id: string
+  fight_id: string
+  winner_pick: string
+  method_pick: 'KO/TKO' | 'Submission' | 'Decision'
+  round_pick?: number | null
+}
+
+export interface Score {
+  id: string
+  player_id: string
+  fight_id: string
+  winner_pts: number
+  method_pts: number
+  round_pts: number
+  fight_total: number
+}
+
+export interface PlayerWithScores {
+  player: Player
+  scores: Record<string, Score>
+  total: number
+}
