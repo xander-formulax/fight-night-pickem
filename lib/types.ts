@@ -42,6 +42,7 @@ export interface StoppageBet {
   second_pick: number   // 0–59
   paid: boolean
   activated: boolean
+  jackpot_paid?: boolean
   created_at: string
 }
 
@@ -53,6 +54,7 @@ export interface Player {
   competition_id?: string | null
   paid: boolean
   activated: boolean
+  payout_paid?: boolean
   created_at: string
 }
 

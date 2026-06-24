@@ -1,10 +1,36 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
-import type { Competition, Fight, Player, PrizeSplit, StoppageBet } from '@/lib/types'
+import type { Competition, Fight, Player, PrizeSplit, Score, StoppageBet } from '@/lib/types'
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
+
+function QRModal({ onClose }: { onClose: () => void }) {
+  const url = typeof window !== 'undefined' ? `${window.location.origin}/play` : '/play'
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl max-w-sm w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-black font-black text-xl tracking-tight text-center">Scan to Play</p>
+        <QRCodeSVG value={url} size={240} bgColor="#ffffff" fgColor="#000000" level="M" />
+        <p className="text-gray-500 text-xs text-center break-all">{url}</p>
+        <button
+          onClick={onClose}
+          className="mt-1 w-full bg-black text-white font-bold py-3 rounded-xl text-sm"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── shared primitives ─────────────────────────────────────────────────────
 
@@ -602,6 +628,9 @@ export default function AdminPage() {
   // simulation mode
   const [simMode, setSimMode] = useState(false)
 
+  // QR code
+  const [showQR, setShowQR] = useState(false)
+
   // competition form
   const [showAddComp, setShowAddComp] = useState(false)
   const [editingCompId, setEditingCompId] = useState<string | null>(null)
@@ -646,6 +675,7 @@ export default function AdminPage() {
 
   // stoppage jackpot
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
+  const [scores, setScores] = useState<Score[]>([])
   const [stopActual, setStopActual] = useState<Record<string, { round: string; minute: string; second: string }>>({})
   const [stoppageWinners, setStoppageWinners] = useState<Record<string, string>>({})
 
@@ -656,16 +686,18 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     setDataLoading(true)
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: playersData }, { data: fightsData }, { data: stoppageBetsData }, settingsRes] = await Promise.all([
+    const [{ data: compsData }, { data: playersData }, { data: fightsData }, { data: stoppageBetsData }, { data: scoresData }, settingsRes] = await Promise.all([
       supabase.from('competitions').select('*').order('created_at'),
       supabase.from('players').select('*').order('created_at'),
       supabase.from('fights').select('*').order('fight_number'),
       supabase.from('stoppage_bets').select('*').order('created_at'),
+      supabase.from('scores').select('*'),
       fetch('/api/event-settings'),
     ])
     if (compsData) setCompetitions(compsData)
     if (playersData) setPlayers(playersData)
     if (stoppageBetsData) setStoppageBets(stoppageBetsData)
+    if (scoresData) setScores(scoresData)
     if (fightsData) {
       setFights(fightsData)
       setResultForms((prev) => {
@@ -812,6 +844,16 @@ export default function AdminPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bet_id: betId, value }),
     })
+  }
+
+  async function markPickEmPaid(playerId: string) {
+    setPlayers((prev) => prev.map((p) => p.id === playerId ? { ...p, payout_paid: true } : p))
+    await fetch('/api/update-player', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: playerId, field: 'payout_paid', value: true }) })
+  }
+
+  async function markJackpotPaid(betId: string) {
+    setStoppageBets((prev) => prev.map((b) => b.id === betId ? { ...b, jackpot_paid: true } : b))
+    await fetch('/api/mark-jackpot-paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bet_id: betId, paid: true }) })
   }
 
   async function declareStoppageWinner(fightId: string) {
@@ -964,12 +1006,19 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      {showQR && <QRModal onClose={() => setShowQR(false)} />}
       <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-black text-white">UFC FIGHT NIGHT &mdash; ADMIN</h1>
           <p className="text-gray-500 text-sm mt-0.5">Competitions, fights, players &amp; scoring</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowQR(true)}
+            className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+          >
+            QR Code
+          </button>
           <button
             onClick={() => setSimMode(v => !v)}
             className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors border ${simMode ? 'bg-yellow-500 border-yellow-400 text-black' : 'bg-gray-800 border-gray-700 text-yellow-400 hover:border-yellow-600'}`}
@@ -1373,109 +1422,88 @@ export default function AdminPage() {
         </div>
       </section>
 
-      {/* ── SECTION 3: Player Management ──────────────────────────────────── */}
-      <section className="mb-10">
-        <SectionHeader>Player Management</SectionHeader>
-        <div className="bg-gray-900 rounded-xl overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
-            <thead>
-              <tr className="border-b border-gray-800">
-                {['Name', 'Pool', 'Signed Up', 'Activate'].map((h) => (
-                  <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {players.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-600">No players yet</td></tr>
-              ) : (
-                players.map((player) => {
-                  const comp = competitions.find((c) => c.id === player.competition_id)
-                  return (
-                    <tr key={player.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                      <td className="px-4 py-3 text-white font-semibold">{player.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-900/40 text-red-300">
-                          {comp ? `${comp.name} (${comp.entry_fee})` : player.tier}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{new Date(player.created_at).toLocaleString()}</td>
-                      <td className="px-4 py-3"><Toggle checked={player.activated} onChange={() => activatePlayer(player.id, !player.activated)} color="green" /></td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* ── SECTION 3: Payments Due ───────────────────────────────────────── */}
+      {(() => {
+        const pendingPickEm = players
+          .filter((p) => !p.activated)
+          .map((p) => {
+            const comp = competitions.find((c) => c.id === p.competition_id)
+            return {
+              key: `pe-${p.id}`,
+              name: p.name,
+              desc: comp ? comp.name : "Pick'em",
+              amount: comp ? comp.entry_fee : '—',
+              createdAt: p.created_at,
+              onActivate: () => activatePlayer(p.id, true),
+            }
+          })
 
-      {/* ── SECTION 3.5: Stoppage Bet Management ─────────────────────────── */}
-      {stoppageBets.length > 0 && (
-        <section className="mb-10">
-          <SectionHeader>Stoppage Bet Management</SectionHeader>
-          <div className="space-y-4">
-            {fights
-              .filter((f) => stoppageBets.some((b) => b.fight_id === f.id))
-              .map((fight) => {
-                const fightBets = stoppageBets
-                  .filter((b) => b.fight_id === fight.id)
-                  .sort((a, b) => a.round_pick !== b.round_pick ? a.round_pick - b.round_pick : a.minute_pick !== b.minute_pick ? a.minute_pick - b.minute_pick : a.second_pick - b.second_pick)
-                return (
-                  <div key={fight.id} className="bg-gray-900 rounded-xl overflow-hidden">
-                    <div className="px-5 py-3 border-b border-gray-800 flex flex-wrap items-center gap-3">
-                      <span className="text-white font-bold">
-                        {fight.fighter_a} vs {fight.fighter_b}
-                      </span>
-                      <span className="text-gray-500 text-sm">Fight {fight.fight_number}</span>
-                      {fight.stoppage_bet_open && (
-                        <span className="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full font-semibold">
-                          BETTING OPEN
-                        </span>
-                      )}
-                      <span className="text-gray-600 text-xs ml-auto">
-                        {fightBets.filter((b) => b.activated).length}/{fightBets.length} activated
-                      </span>
-                    </div>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-800">
-                          {['Player', 'Minute', 'Status', 'Activate'].map((h) => (
-                            <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-2 font-semibold">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {fightBets.map((bet) => {
-                          const playerName = players.find((p) => p.id === bet.player_id)?.name ?? 'Unknown'
-                          return (
-                            <tr key={bet.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                              <td className="px-4 py-2.5 text-white font-medium">{playerName}</td>
-                              <td className="px-4 py-2.5">
-                                <span className="bg-yellow-900/40 text-yellow-300 font-black px-2 py-0.5 rounded text-sm">
-                                  R{bet.round_pick} {bet.minute_pick - 1}:{String(bet.second_pick).padStart(2, '0')}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2.5">
-                                {bet.activated
-                                  ? <span className="text-xs font-semibold text-green-400">Activated</span>
-                                  : <span className="text-xs font-semibold text-orange-400">Pending Payment</span>
-                                }
-                              </td>
-                              <td className="px-4 py-2.5">
-                                <Toggle checked={bet.activated} onChange={() => activateStoppageBet(bet.id, !bet.activated)} color="green" />
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })}
-          </div>
-        </section>
-      )}
+        const pendingJackpots = stoppageBets
+          .filter((b) => !b.activated)
+          .map((b) => {
+            const player = players.find((p) => p.id === b.player_id)
+            const fight = fights.find((f) => f.id === b.fight_id)
+            const m = b.minute_pick - 1
+            const s = String(b.second_pick).padStart(2, '0')
+            return {
+              key: `jb-${b.id}`,
+              name: player?.name ?? 'Unknown',
+              desc: fight ? `Fight ${fight.fight_number} Jackpot — R${b.round_pick} ${m}:${s}` : 'Jackpot Bet',
+              amount: `$${fight?.stoppage_bet_fee ?? '20'}`,
+              createdAt: b.created_at,
+              onActivate: () => activateStoppageBet(b.id, true),
+            }
+          })
+
+        const allPending = [...pendingPickEm, ...pendingJackpots].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+
+        return (
+          <section className="mb-10">
+            <div className="flex items-center justify-between mb-4">
+              <SectionHeader>Payments Due</SectionHeader>
+              {allPending.length > 0 && (
+                <span className="text-sm font-bold text-orange-400 bg-orange-900/30 px-3 py-1 rounded-full">
+                  {allPending.length} pending
+                </span>
+              )}
+            </div>
+            <div className="bg-gray-900 rounded-xl overflow-x-auto">
+              {allPending.length === 0 ? (
+                <div className="px-4 py-10 text-center text-gray-600">All payments collected</div>
+              ) : (
+                <table className="w-full text-sm whitespace-nowrap">
+                  <thead>
+                    <tr className="border-b border-gray-800">
+                      {['Name', 'Owes', 'Amount', 'Activate'].map((h) => (
+                        <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPending.map((item) => (
+                      <tr key={item.key} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                        <td className="px-4 py-3 text-white font-semibold">{item.name}</td>
+                        <td className="px-4 py-3 text-gray-400 text-sm">{item.desc}</td>
+                        <td className="px-4 py-3 text-green-400 font-bold">{item.amount}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={item.onActivate}
+                            className="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-colors"
+                          >
+                            Activate
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
+        )
+      })()}
 
       {/* ── SECTION 4: Fight Status & Scoring ─────────────────────────────── */}
       <section className="mb-10">
@@ -1612,6 +1640,121 @@ export default function AdminPage() {
           })}
         </div>
       </section>
+
+      {/* ── SECTION 5: Payouts ────────────────────────────────────────────── */}
+      {(() => {
+        // Pick'em prizes — compute standings per competition
+        const pickEmPayouts: Array<{ playerId: string; playerName: string; label: string; amount: number; paid: boolean }> = []
+        if (fights.some((f) => f.status === 'complete')) {
+          for (const comp of competitions) {
+            if (!(comp.prize_splits ?? []).length) continue
+            const poolData = expenseRecovery.poolData.find((d) => d.comp.id === comp.id)
+            if (!poolData || poolData.actualPrizePool <= 0) continue
+            const compPlayers = players.filter((p) => p.competition_id === comp.id && p.activated)
+            if (compPlayers.length === 0) continue
+            const ranked = compPlayers
+              .map((p) => ({ player: p, total: scores.filter((s) => s.player_id === p.id).reduce((sum, s) => sum + s.fight_total, 0) }))
+              .sort((a, b) => b.total - a.total)
+            for (const split of comp.prize_splits ?? []) {
+              const entry = ranked[split.place - 1]
+              if (!entry) continue
+              pickEmPayouts.push({
+                playerId: entry.player.id,
+                playerName: entry.player.name,
+                label: `${comp.name} — ${ordinal(split.place)} Place`,
+                amount: Math.round(poolData.actualPrizePool * split.pct / 100),
+                paid: !!(entry.player.payout_paid),
+              })
+            }
+          }
+        }
+
+        // Jackpot winners — find winner for each resolved fight
+        const jackpotPayouts: Array<{ betId: string; playerName: string; label: string; amount: number; paid: boolean }> = []
+        for (const fight of fights) {
+          if (fight.stoppage_actual_round == null) continue
+          const fightBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
+          if (fightBets.length === 0) continue
+          const actualSec = (fight.stoppage_actual_round - 1) * 300 + (fight.stoppage_actual_minute ?? 0) * 60 + (fight.stoppage_actual_second ?? 0)
+          const winnerBet = fightBets
+            .filter((b) => (b.round_pick - 1) * 300 + (b.minute_pick - 1) * 60 + b.second_pick <= actualSec)
+            .sort((a, b) => {
+              const as = (a.round_pick - 1) * 300 + (a.minute_pick - 1) * 60 + a.second_pick
+              const bs = (b.round_pick - 1) * 300 + (b.minute_pick - 1) * 60 + b.second_pick
+              return bs - as
+            })[0]
+          if (!winnerBet) continue
+          const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+          const m = winnerBet.minute_pick - 1
+          const s = String(winnerBet.second_pick).padStart(2, '0')
+          jackpotPayouts.push({
+            betId: winnerBet.id,
+            playerName: players.find((p) => p.id === winnerBet.player_id)?.name ?? 'Unknown',
+            label: `Fight ${fight.fight_number} Jackpot — R${winnerBet.round_pick} ${m}:${s}`,
+            amount: fightBets.length * fee,
+            paid: !!(winnerBet.jackpot_paid),
+          })
+        }
+
+        if (pickEmPayouts.length === 0 && jackpotPayouts.length === 0) return null
+
+        return (
+          <section className="mb-10">
+            <SectionHeader>Payouts</SectionHeader>
+            <div className="space-y-4">
+              {pickEmPayouts.length > 0 && (
+                <div className="bg-gray-900 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-800">
+                    <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Pick&apos;em Prizes</span>
+                  </div>
+                  <table className="w-full text-sm whitespace-nowrap">
+                    <tbody>
+                      {pickEmPayouts.map((payout) => (
+                        <tr key={`${payout.playerId}-${payout.label}`} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                          <td className="px-4 py-3 text-white font-semibold">{payout.playerName}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{payout.label}</td>
+                          <td className="px-4 py-3 text-green-400 font-black text-base">${payout.amount}</td>
+                          <td className="px-4 py-3 text-right">
+                            {payout.paid
+                              ? <span className="text-xs font-semibold text-gray-600 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
+                              : <button onClick={() => markPickEmPaid(payout.playerId)} className="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-colors">Mark Paid</button>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {jackpotPayouts.length > 0 && (
+                <div className="bg-gray-900 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-800">
+                    <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Jackpot Winners</span>
+                  </div>
+                  <table className="w-full text-sm whitespace-nowrap">
+                    <tbody>
+                      {jackpotPayouts.map((payout) => (
+                        <tr key={payout.betId} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                          <td className="px-4 py-3 text-white font-semibold">{payout.playerName}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{payout.label}</td>
+                          <td className="px-4 py-3 text-yellow-400 font-black text-base">${payout.amount}</td>
+                          <td className="px-4 py-3 text-right">
+                            {payout.paid
+                              ? <span className="text-xs font-semibold text-gray-600 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
+                              : <button onClick={() => markJackpotPaid(payout.betId)} className="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-colors">Mark Paid</button>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        )
+      })()}
 
       {/* ── Danger Zone ───────────────────────────────────────────────────── */}
       <section>

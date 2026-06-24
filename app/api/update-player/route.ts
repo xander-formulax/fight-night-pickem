@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 export async function POST(request: NextRequest) {
   const { player_id, field, value } = await request.json()
 
-  if (!player_id || (field !== 'paid' && field !== 'activated')) {
+  if (!player_id || (field !== 'paid' && field !== 'activated' && field !== 'payout_paid')) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
