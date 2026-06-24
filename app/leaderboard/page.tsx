@@ -2,30 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
-import type { Competition, Fight, Player, Score, PlayerWithScores } from '@/lib/types'
-
-function FightStatusPill({ fight }: { fight: Fight }) {
-  const base = 'px-3 py-2 rounded-lg text-center border text-xs font-bold'
-  const cls =
-    fight.status === 'complete'
-      ? `${base} bg-green-900/40 border-green-700 text-green-300`
-      : fight.status === 'locked'
-      ? `${base} bg-yellow-900/40 border-yellow-700 text-yellow-300`
-      : `${base} bg-gray-800 border-gray-700 text-gray-500`
-  return (
-    <div className={cls}>
-      <div className="uppercase tracking-wide">F{fight.fight_number}</div>
-      <div className="mt-0.5 font-normal opacity-80 normal-case leading-tight">
-        {fight.fighter_a}
-        <br />vs<br />
-        {fight.fighter_b}
-      </div>
-      {fight.result_winner && (
-        <div className="mt-1 font-black text-sm">{fight.result_winner}</div>
-      )}
-    </div>
-  )
-}
+import type { Competition, Fight, Player, Pick, Score, PlayerWithScores } from '@/lib/types'
 
 function RankBadge({ rank }: { rank: number }) {
   const base = 'w-10 text-center inline-block font-black'
@@ -35,13 +12,154 @@ function RankBadge({ rank }: { rank: number }) {
   return <span className={`${base} text-2xl text-gray-600`}>{rank}</span>
 }
 
+function PlayerModal({
+  entry, fights, picks, onClose,
+}: {
+  entry: PlayerWithScores
+  fights: Fight[]
+  picks: Pick[]
+  onClose: () => void
+}) {
+  const playerPicks = picks.filter((p) => p.player_id === entry.player.id)
+  const pickMap: Record<string, Pick> = {}
+  playerPicks.forEach((p) => { pickMap[p.fight_id] = p })
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-6 border-b border-gray-800">
+          <div>
+            <h2 className="text-2xl font-black text-white">{entry.player.name}</h2>
+            <p className="text-gray-500 text-sm mt-0.5">
+              {entry.player.competition_id ? '' : entry.player.tier}
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-4xl font-black text-green-400">{entry.total}</div>
+            <div className="text-gray-600 text-xs">total pts</div>
+          </div>
+        </div>
+
+        {/* Per-fight breakdown */}
+        <div className="divide-y divide-gray-800">
+          {fights.map((fight) => {
+            const pick = pickMap[fight.id]
+            const score = entry.scores[fight.id]
+            const isComplete = fight.status === 'complete'
+            const hasResult = isComplete && fight.result_winner
+
+            return (
+              <div key={fight.id} className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-gray-600 text-xs font-semibold">FIGHT {fight.fight_number}</span>
+                    <p className="text-white font-bold mt-0.5">
+                      {fight.fighter_a} <span className="text-gray-600 font-normal">vs</span> {fight.fighter_b}
+                    </p>
+                  </div>
+                  <div className={`text-xs px-2 py-1 rounded-full font-bold ${
+                    isComplete ? 'bg-green-900 text-green-300' :
+                    fight.status === 'locked' ? 'bg-yellow-900 text-yellow-300' :
+                    'bg-blue-900 text-blue-300'
+                  }`}>
+                    {fight.status.toUpperCase()}
+                  </div>
+                </div>
+
+                {pick ? (
+                  <div className="space-y-2">
+                    {/* Their pick */}
+                    <div className="bg-gray-800 rounded-lg px-4 py-2.5">
+                      <p className="text-xs text-gray-500 mb-1">Your pick</p>
+                      <p className="text-sm">
+                        <span className="text-white font-bold">{pick.winner_pick}</span>
+                        <span className="text-gray-500 mx-1.5">by</span>
+                        <span className="text-orange-400 font-semibold">{pick.method_pick}</span>
+                        {pick.round_pick != null && (
+                          <span className="text-gray-500 ml-1.5">· Round {pick.round_pick}</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Result + score */}
+                    {hasResult ? (
+                      <div className="bg-gray-800/60 rounded-lg px-4 py-2.5">
+                        <p className="text-xs text-gray-500 mb-1">Result</p>
+                        <p className="text-sm">
+                          <span className="text-white font-bold">{fight.result_winner}</span>
+                          <span className="text-gray-500 mx-1.5">by</span>
+                          <span className="text-gray-300">{fight.result_method}</span>
+                          {fight.result_round != null && (
+                            <span className="text-gray-500 ml-1.5">· Round {fight.result_round}</span>
+                          )}
+                        </p>
+                        {score ? (
+                          <div className="flex items-center gap-3 mt-2">
+                            {score.winner_pts > 0 && (
+                              <span className="text-xs text-gray-400">
+                                Winner <span className="text-green-400 font-bold">+{score.winner_pts}</span>
+                              </span>
+                            )}
+                            {score.method_pts > 0 && (
+                              <span className="text-xs text-gray-400">
+                                Method <span className="text-blue-400 font-bold">+{score.method_pts}</span>
+                              </span>
+                            )}
+                            {score.round_pts > 0 && (
+                              <span className="text-xs text-gray-400">
+                                Round <span className="text-purple-400 font-bold">+{score.round_pts}</span>
+                              </span>
+                            )}
+                            <span className="ml-auto text-white font-black text-lg">
+                              {score.fight_total > 0 ? `+${score.fight_total}` : '0'} pts
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-gray-700 text-xs mt-1">No points scored</p>
+                        )}
+                      </div>
+                    ) : isComplete ? (
+                      <p className="text-gray-700 text-xs px-1">Awaiting scoring</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-gray-700 text-sm italic">No pick submitted for this fight</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="p-4 border-t border-gray-800">
+          <button
+            onClick={onClose}
+            className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function LeaderboardPage() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [activeCompId, setActiveCompId] = useState<string>('')
   const [fights, setFights] = useState<Fight[]>([])
   const [allPlayers, setAllPlayers] = useState<Player[]>([])
   const [allScores, setAllScores] = useState<Score[]>([])
+  const [allPicks, setAllPicks] = useState<Pick[]>([])
   const [lastUpdate, setLastUpdate] = useState('')
+  const [expandedEntry, setExpandedEntry] = useState<PlayerWithScores | null>(null)
 
   const buildEntries = useCallback(
     (players: Player[], scores: Score[], compId: string): PlayerWithScores[] => {
@@ -61,12 +179,13 @@ export default function LeaderboardPage() {
 
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }] =
+    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }, { data: picksData }] =
       await Promise.all([
         supabase.from('competitions').select('*').order('created_at'),
         supabase.from('fights').select('*').order('fight_number'),
         supabase.from('players').select('*'),
         supabase.from('scores').select('*'),
+        supabase.from('picks').select('*'),
       ])
 
     if (compsData) {
@@ -76,6 +195,7 @@ export default function LeaderboardPage() {
     if (fightsData) setFights(fightsData)
     if (playersData) setAllPlayers(playersData)
     if (scoresData) setAllScores(scoresData)
+    if (picksData) setAllPicks(picksData)
     setLastUpdate(new Date().toLocaleTimeString())
   }, [])
 
@@ -129,21 +249,34 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {/* Active competition label (single comp) */}
       {competitions.length === 1 && activeComp && (
         <p className="text-center text-gray-500 text-sm mb-6">
           {activeComp.name} &bull; {activeComp.entry_fee}
         </p>
       )}
 
-      {/* Fight status row */}
+      {/* Fight status pills */}
       {fights.length > 0 && (
         <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {fights.map((f) => <FightStatusPill key={f.id} fight={f} />)}
+          {fights.map((f) => (
+            <div
+              key={f.id}
+              className={`px-3 py-1.5 rounded-lg text-center border text-xs font-bold ${
+                f.status === 'complete'
+                  ? 'bg-green-900/40 border-green-700 text-green-300'
+                  : f.status === 'locked'
+                  ? 'bg-yellow-900/40 border-yellow-700 text-yellow-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-500'
+              }`}
+            >
+              <span className="uppercase tracking-wide">F{f.fight_number}</span>
+              {f.result_winner && <span className="ml-1.5 font-black">{f.result_winner}</span>}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Leaderboard table */}
+      {/* Leaderboard */}
       {competitions.length === 0 ? (
         <div className="text-center text-gray-700 text-3xl font-black mt-20 tracking-widest">
           NO COMPETITIONS SET UP
@@ -153,104 +286,67 @@ export default function LeaderboardPage() {
           WAITING FOR PLAYERS
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b-2 border-gray-800">
-                <th className="pb-3 pr-3 w-12" />
-                <th className="text-left pb-3 text-gray-500 text-xs uppercase tracking-widest font-semibold">
-                  Player
-                </th>
-                {fights.map((f) => (
-                  <th
-                    key={f.id}
-                    className="pb-3 px-2 text-center text-gray-600 text-xs uppercase tracking-wider font-semibold min-w-[70px]"
-                  >
-                    <div>F{f.fight_number}</div>
-                    <div
-                      className={`w-2 h-2 rounded-full mx-auto mt-1 ${
-                        f.status === 'complete' ? 'bg-green-500' :
-                        f.status === 'locked' ? 'bg-yellow-500' : 'bg-gray-700'
-                      }`}
-                    />
-                  </th>
-                ))}
-                <th className="pb-3 pl-4 text-center text-white text-sm uppercase tracking-widest font-black">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry, idx) => {
-                const rank = idx + 1
-                const isFirst = rank === 1
-                const isTop3 = rank <= 3
-                return (
-                  <tr
-                    key={entry.player.id}
-                    className={`border-b border-gray-800/40 ${
-                      isFirst ? 'bg-yellow-900/10' : isTop3 ? 'bg-gray-800/10' : ''
+        <div className="max-w-2xl mx-auto space-y-2">
+          <p className="text-center text-gray-700 text-xs mb-4 tracking-wider">TAP A NAME TO SEE THEIR PICKS</p>
+          {entries.map((entry, idx) => {
+            const rank = idx + 1
+            const isFirst = rank === 1
+            const isTop3 = rank <= 3
+            return (
+              <button
+                key={entry.player.id}
+                onClick={() => setExpandedEntry(entry)}
+                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all text-left cursor-pointer hover:border-gray-600 active:scale-[0.99] ${
+                  isFirst
+                    ? 'bg-yellow-900/15 border-yellow-800/40 hover:bg-yellow-900/25'
+                    : isTop3
+                    ? 'bg-gray-800/40 border-gray-700/40'
+                    : 'bg-gray-900/60 border-gray-800/30'
+                }`}
+              >
+                <div className="shrink-0 w-10 text-right">
+                  <RankBadge rank={rank} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={`font-black tracking-tight leading-none truncate ${
+                      isFirst
+                        ? 'text-3xl md:text-4xl text-yellow-300'
+                        : isTop3
+                        ? 'text-2xl md:text-3xl text-white'
+                        : 'text-xl md:text-2xl text-gray-200'
                     }`}
                   >
-                    <td className="py-4 pr-3 text-right">
-                      <RankBadge rank={rank} />
-                    </td>
-                    <td className="py-4 pr-4">
-                      <div
-                        className={`font-black tracking-tight leading-none ${
-                          isFirst ? 'text-3xl md:text-4xl text-yellow-300' :
-                          isTop3 ? 'text-2xl md:text-3xl text-white' :
-                          'text-xl md:text-2xl text-gray-200'
-                        }`}
-                      >
-                        {entry.player.name}
-                      </div>
-                    </td>
-                    {fights.map((f) => {
-                      const score = entry.scores[f.id]
-                      return (
-                        <td key={f.id} className="py-4 px-2 text-center">
-                          {score ? (
-                            <div>
-                              <div
-                                className={`font-black ${
-                                  isFirst ? 'text-2xl md:text-3xl' :
-                                  isTop3 ? 'text-xl md:text-2xl' : 'text-lg md:text-xl'
-                                } ${score.fight_total > 0 ? 'text-green-400' : 'text-gray-700'}`}
-                              >
-                                {score.fight_total || '—'}
-                              </div>
-                              {score.fight_total > 0 && (
-                                <div className="text-gray-600 text-xs mt-0.5 leading-tight">
-                                  {score.winner_pts > 0 && <span>W:{score.winner_pts}</span>}
-                                  {score.method_pts > 0 && <span className="ml-1">M:{score.method_pts}</span>}
-                                  {score.round_pts > 0 && <span className="ml-1">R:{score.round_pts}</span>}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-700 text-xl">—</span>
-                          )}
-                        </td>
-                      )
-                    })}
-                    <td className="py-4 pl-4 text-center">
-                      <span
-                        className={`font-black ${
-                          isFirst ? 'text-5xl md:text-6xl text-yellow-300' :
-                          isTop3 ? 'text-4xl md:text-5xl text-white' :
-                          'text-3xl md:text-4xl text-gray-300'
-                        }`}
-                      >
-                        {entry.total}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                    {entry.player.name}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span
+                    className={`font-black ${
+                      isFirst
+                        ? 'text-5xl md:text-6xl text-yellow-300'
+                        : isTop3
+                        ? 'text-4xl md:text-5xl text-white'
+                        : 'text-3xl md:text-4xl text-gray-300'
+                    }`}
+                  >
+                    {entry.total}
+                  </span>
+                </div>
+              </button>
+            )
+          })}
         </div>
+      )}
+
+      {/* Player detail modal */}
+      {expandedEntry && (
+        <PlayerModal
+          entry={expandedEntry}
+          fights={fights}
+          picks={allPicks}
+          onClose={() => setExpandedEntry(null)}
+        />
       )}
     </div>
   )
