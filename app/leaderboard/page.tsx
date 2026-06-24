@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import type { Competition, Fight, Player, Pick, Score, PlayerWithScores } from '@/lib/types'
@@ -252,6 +253,12 @@ export default function LeaderboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      {/* Tab navigation */}
+      <div className="max-w-3xl mx-auto flex gap-1 bg-gray-900/80 rounded-xl p-1 mb-6">
+        <Link href="/play" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-500 hover:text-white transition-colors">My Picks</Link>
+        <span className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center bg-white text-black">Leaderboard</span>
+      </div>
+
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-5xl md:text-8xl font-black text-red-500 tracking-tight leading-none">

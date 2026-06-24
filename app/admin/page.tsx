@@ -870,6 +870,17 @@ export default function AdminPage() {
     await fetch('/api/mark-jackpot-paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bet_id: betId, paid: true }) })
   }
 
+  const [payingAll, setPayingAll] = useState(false)
+
+  async function payAllPayouts(playerIds: string[], betIds: string[]) {
+    setPayingAll(true)
+    await Promise.all([
+      ...playerIds.map((id) => markPickEmPaid(id)),
+      ...betIds.map((id) => markJackpotPaid(id)),
+    ])
+    setPayingAll(false)
+  }
+
   async function saveFullResult(fight: Fight) {
     const form = resultForms[fight.id]
     if (!form?.winner || !form?.method) return
@@ -1986,9 +1997,29 @@ export default function AdminPage() {
 
         if (pickEmPayouts.length === 0 && jackpotPayouts.length === 0) return null
 
+        const unpaidPickEm = pickEmPayouts.filter((p) => !p.paid)
+        const unpaidJackpot = jackpotPayouts.filter((p) => !p.paid)
+        const totalOwed = [...unpaidPickEm, ...unpaidJackpot].reduce((s, p) => s + p.amount, 0)
+        const allPaid = unpaidPickEm.length === 0 && unpaidJackpot.length === 0
+
         return (
           <section className="mb-10">
-            <SectionHeader>Payouts</SectionHeader>
+            <div className="flex items-center justify-between mb-4">
+              <SectionHeader>Payouts</SectionHeader>
+              {!allPaid && (
+                <div className="flex items-center gap-3">
+                  <span className="text-green-400 font-black text-xl">${totalOwed} owed</span>
+                  <button
+                    onClick={() => payAllPayouts(unpaidPickEm.map((p) => p.playerId), unpaidJackpot.map((p) => p.betId))}
+                    disabled={payingAll}
+                    className="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+                  >
+                    {payingAll ? 'Paying…' : `Pay $${totalOwed} total`}
+                  </button>
+                </div>
+              )}
+              {allPaid && <span className="text-gray-600 text-sm font-semibold">All paid ✓</span>}
+            </div>
             <div className="space-y-4">
               {pickEmPayouts.length > 0 && (
                 <div className="bg-gray-900 rounded-xl overflow-hidden">

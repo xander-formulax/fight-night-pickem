@@ -1,9 +1,19 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
 import type { Competition, Fight, Player, Pick, StoppageBet } from '@/lib/types'
+
+function PlayerTabs() {
+  return (
+    <div className="flex gap-1 bg-gray-900/80 rounded-xl p-1 mb-6">
+      <span className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center bg-white text-black">My Picks</span>
+      <Link href="/leaderboard" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-500 hover:text-white transition-colors">Leaderboard</Link>
+    </div>
+  )
+}
 
 type Method = 'KO/TKO' | 'Submission' | 'Decision'
 
@@ -277,6 +287,7 @@ export default function PlayPage() {
   if (existingPlayer) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
+        <PlayerTabs />
         <div className="text-center mb-8">
           <h1 className="text-4xl font-black text-red-500 tracking-tight">UFC FIGHT NIGHT</h1>
           <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
@@ -552,6 +563,7 @@ export default function PlayPage() {
 
   return (
     <div className={`max-w-3xl mx-auto px-4 py-8 ${totalPotential > 0 ? 'pb-28' : ''}`}>
+      <PlayerTabs />
       <div className="text-center mb-8">
         <h1 className="text-4xl font-black text-red-500 tracking-tight">UFC FIGHT NIGHT</h1>
         <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
