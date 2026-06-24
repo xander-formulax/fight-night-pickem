@@ -880,6 +880,14 @@ export default function AdminPage() {
     }
   }
 
+  async function rolloverJackpot(fromFightId: string, toFightId: string) {
+    const res = await fetch('/api/jackpot-rollover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_fight_id: fromFightId, to_fight_id: toFightId }),
+    })
+    if (res.ok) await loadData()
+  }
+
   // ── results ───────────────────────────────────────────────────────────────
 
   function setResult(fightId: string, field: keyof ResultFormState, value: string) {
@@ -1021,7 +1029,7 @@ export default function AdminPage() {
           >
             {simMode ? '⚡ Sim Mode ON' : '⚡ Simulation'}
           </button>
-          <button onClick={loadData} disabled={dataLoading} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <button onClick={() => loadData()} disabled={dataLoading} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
             {dataLoading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
@@ -1625,8 +1633,30 @@ export default function AdminPage() {
                       </button>
                     </div>
                     {stoppageWinners[fight.id] && (
-                      <div className={`mt-2 text-sm font-semibold ${stoppageWinners[fight.id].startsWith('No winner') ? 'text-gray-500' : 'text-yellow-400'}`}>
-                        {stoppageWinners[fight.id].startsWith('No winner') ? stoppageWinners[fight.id] : `Jackpot winner: ${stoppageWinners[fight.id]}`}
+                      <div className="mt-2">
+                        {stoppageWinners[fight.id].startsWith('No winner') ? (
+                          <div>
+                            <p className="text-sm font-semibold text-gray-500">{stoppageWinners[fight.id]}</p>
+                            <p className="text-xs text-gray-600 mt-0.5">Fight went to decision — jackpot rolls over.</p>
+                            {(() => {
+                              const nextFight = fights.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
+                              if (!nextFight) return <p className="text-xs text-gray-700 mt-1">No eligible next fight to roll over to.</p>
+                              const activatedBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
+                              const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+                              const rolloverAmt = activatedBets.length * fee + (fight.jackpot_rollover ?? 0)
+                              return (
+                                <button
+                                  onClick={() => rolloverJackpot(fight.id, nextFight.id)}
+                                  className="mt-2 bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
+                                >
+                                  Roll ${rolloverAmt} → Fight {nextFight.fight_number}
+                                </button>
+                              )
+                            })()}
+                          </div>
+                        ) : (
+                          <p className="text-sm font-semibold text-yellow-400">Jackpot winner: {stoppageWinners[fight.id]}</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1687,7 +1717,7 @@ export default function AdminPage() {
             betId: winnerBet.id,
             playerName: players.find((p) => p.id === winnerBet.player_id)?.name ?? 'Unknown',
             label: `Fight ${fight.fight_number} Jackpot — R${winnerBet.round_pick} ${m}:${s}`,
-            amount: fightBets.length * fee,
+            amount: fightBets.length * fee + (fight.jackpot_rollover ?? 0),
             paid: !!(winnerBet.jackpot_paid),
           })
         }

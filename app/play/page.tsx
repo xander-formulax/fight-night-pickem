@@ -320,9 +320,12 @@ export default function PlayPage() {
           return (
             <div className="mb-6">
               <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
-              <p className="text-gray-500 text-sm mb-4">
-                Pick the exact second a fight is stopped. Closest pick without going over wins the jackpot.
-                Each second can only be claimed once — picks are final.
+              <p className="text-gray-500 text-sm mb-1">
+                Guess the exact moment the fight gets stopped — pick a round, minute, and second.
+                The closest guess that <span className="text-white font-semibold">doesn&apos;t go over</span> wins the whole pot (Price Is Right rules).
+              </p>
+              <p className="text-gray-600 text-xs mb-4">
+                If the fight goes to decision, the pot rolls over to the next jackpot fight. Each second can only be claimed by one person — picks are final once confirmed.
               </p>
               <div className="space-y-4">
                 {jackpotFights.map((fight) => {
@@ -330,6 +333,10 @@ export default function PlayPage() {
                   const myBet = fightBets.find((b) => b.player_id === existingPlayer.id)
                   const draft = stoppageDrafts[fight.id] ?? { step: 'round' as const, round: null, minute: null, second: 0, error: '', placing: false }
                   const fee = fight.stoppage_bet_fee ?? '20'
+                  const feeNum = parseFloat(fee) || 20
+                  const activatedCount = fightBets.filter((b) => b.activated).length
+                  const rollover = fight.jackpot_rollover ?? 0
+                  const potTotal = activatedCount * feeNum + rollover
 
                   const takenInMinute = (r: number, m: number) =>
                     fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
@@ -345,10 +352,25 @@ export default function PlayPage() {
                           <p className="text-white font-bold">
                             {fight.fighter_a} vs {fight.fighter_b}
                           </p>
+                          {rollover > 0 && (
+                            <p className="text-xs text-orange-400 mt-1 font-semibold">
+                              🔥 Includes ${rollover} rollover from previous fight
+                            </p>
+                          )}
                         </div>
                         <div className="text-right">
-                          <p className="text-yellow-400 font-black text-xl">${fee}</p>
-                          <p className="text-xs text-gray-500">entry fee</p>
+                          {potTotal > 0 ? (
+                            <>
+                              <p className="text-yellow-400 font-black text-xl">${potTotal}</p>
+                              <p className="text-xs text-gray-500">current pot</p>
+                              <p className="text-xs text-gray-600">${fee} entry</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-yellow-400 font-black text-xl">${fee}</p>
+                              <p className="text-xs text-gray-500">entry fee</p>
+                            </>
+                          )}
                         </div>
                       </div>
 

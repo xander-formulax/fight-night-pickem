@@ -30,6 +30,7 @@ export interface Fight {
   stoppage_actual_round?: number | null
   stoppage_actual_minute?: number | null  // clock minute within round (0–4)
   stoppage_actual_second?: number | null
+  jackpot_rollover?: number | null
   created_at: string
 }
 
