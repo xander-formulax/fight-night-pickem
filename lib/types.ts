@@ -27,7 +27,9 @@ export interface Fight {
   result_round?: number | null
   stoppage_bet_open?: boolean
   stoppage_bet_fee?: string | null
-  stoppage_actual_minute?: number | null
+  stoppage_actual_round?: number | null
+  stoppage_actual_minute?: number | null  // clock minute within round (0–4)
+  stoppage_actual_second?: number | null
   created_at: string
 }
 
@@ -35,7 +37,9 @@ export interface StoppageBet {
   id: string
   fight_id: string
   player_id: string
-  minute: number
+  round_pick: number
+  minute_pick: number   // 1–5 (internal); display as minute_pick - 1 for clock
+  second_pick: number   // 0–59
   paid: boolean
   activated: boolean
   created_at: string

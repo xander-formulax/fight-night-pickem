@@ -58,8 +58,16 @@ export default function PlayPage() {
   const [error, setError] = useState('')
 
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
-  const [stoppageBetError, setStoppageBetError] = useState<Record<string, string>>({})
-  const [stoppageBetPlacing, setStoppageBetPlacing] = useState(false)
+
+  interface StoppageDraft {
+    step: 'round' | 'minute' | 'second'
+    round: number | null
+    minute: number | null  // 1–5 (internal)
+    second: number         // 0–59
+    error: string
+    placing: boolean
+  }
+  const [stoppageDrafts, setStoppageDrafts] = useState<Record<string, StoppageDraft>>({})
 
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
@@ -144,27 +152,42 @@ export default function PlayPage() {
     }))
   }
 
-  async function placeStoppageBet(fightId: string, minute: number) {
+  function updateDraft(fightId: string, update: Partial<StoppageDraft>) {
+    const defaults: StoppageDraft = { step: 'round', round: null, minute: null, second: 0, error: '', placing: false }
+    setStoppageDrafts((prev) => ({
+      ...prev,
+      [fightId]: { ...defaults, ...prev[fightId], ...update },
+    }))
+  }
+
+  async function confirmStoppageBet(fightId: string) {
     if (!existingPlayer) return
-    setStoppageBetPlacing(true)
-    setStoppageBetError((prev) => ({ ...prev, [fightId]: '' }))
+    const draft = stoppageDrafts[fightId]
+    if (!draft || draft.round == null || draft.minute == null) return
+    updateDraft(fightId, { placing: true, error: '' })
     const res = await fetch('/api/stoppage-bet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fight_id: fightId, player_id: existingPlayer.id, minute }),
+      body: JSON.stringify({
+        fight_id: fightId,
+        player_id: existingPlayer.id,
+        round_pick: draft.round,
+        minute_pick: draft.minute,
+        second_pick: draft.second,
+      }),
     })
     const result = await res.json()
     if (!res.ok) {
-      setStoppageBetError((prev) => ({ ...prev, [fightId]: result.error ?? 'Failed to place bet' }))
+      updateDraft(fightId, { placing: false, error: result.error ?? 'Failed to place bet' })
     } else {
-      setStoppageBets((prev) => {
-        const filtered = prev.filter(
-          (b) => !(b.fight_id === fightId && b.player_id === existingPlayer.id)
-        )
-        return [...filtered, result.bet]
+      setStoppageBets((prev) => [...prev.filter((b) => b.id !== result.bet.id), result.bet])
+      // Reset draft — bet is now locked
+      setStoppageDrafts((prev) => {
+        const next = { ...prev }
+        delete next[fightId]
+        return next
       })
     }
-    setStoppageBetPlacing(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -294,19 +317,23 @@ export default function PlayPage() {
             <div className="mb-6">
               <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
               <p className="text-gray-500 text-sm mb-4">
-                Pick the exact minute a fight is stopped. Closest pick without going over wins the whole jackpot!
-                Each minute can only be claimed once.
+                Pick the exact second a fight is stopped. Closest pick without going over wins the jackpot.
+                Each second can only be claimed once — picks are final.
               </p>
               <div className="space-y-4">
                 {jackpotFights.map((fight) => {
-                  const allBetsForFight = stoppageBets.filter((b) => b.fight_id === fight.id)
-                  const takenMinutes = allBetsForFight.map((b) => b.minute)
-                  const myBet = allBetsForFight.find((b) => b.player_id === existingPlayer.id)
-                  const maxMinute = (fight.rounds ?? 3) * 5
+                  const fightBets = stoppageBets.filter((b) => b.fight_id === fight.id)
+                  const myBet = fightBets.find((b) => b.player_id === existingPlayer.id)
+                  const draft = stoppageDrafts[fight.id] ?? { step: 'round' as const, round: null, minute: null, second: 0, error: '', placing: false }
                   const fee = fight.stoppage_bet_fee ?? '20'
+
+                  const takenInMinute = (r: number, m: number) =>
+                    fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
+
                   return (
                     <div key={fight.id} className="bg-gray-900 rounded-xl p-5 border border-yellow-900/40">
-                      <div className="flex justify-between items-start mb-3">
+                      {/* Header */}
+                      <div className="flex justify-between items-start mb-4">
                         <div>
                           <p className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-0.5">
                             Fight {fight.fight_number} — Jackpot
@@ -321,60 +348,122 @@ export default function PlayPage() {
                         </div>
                       </div>
 
-                      {myBet && (
-                        <div className="mb-3 bg-yellow-900/25 border border-yellow-700/50 rounded-lg px-4 py-2 flex items-center justify-between">
-                          <span className="text-yellow-300 font-semibold text-sm">
-                            Your pick: Minute {myBet.minute}
-                          </span>
-                          <span
-                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              myBet.activated
-                                ? 'bg-green-900 text-green-300'
-                                : 'bg-orange-900/60 text-orange-300'
-                            }`}
-                          >
-                            {myBet.activated ? 'Confirmed' : 'Awaiting Payment'}
-                          </span>
+                      {/* Locked pick display */}
+                      {myBet ? (
+                        <div className="bg-yellow-900/25 border border-yellow-700/50 rounded-xl px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-yellow-600 uppercase tracking-wider mb-0.5">Your Pick — Locked</p>
+                              <p className="text-yellow-300 font-black text-lg">
+                                Round {myBet.round_pick} &bull; {myBet.minute_pick - 1}:{myBet.second_pick.toString().padStart(2, '0')}
+                              </p>
+                            </div>
+                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${myBet.activated ? 'bg-green-900 text-green-300' : 'bg-orange-900/60 text-orange-300'}`}>
+                              {myBet.activated ? 'Confirmed' : 'Awaiting Payment'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-2 italic">Pick is final and cannot be changed.</p>
                         </div>
-                      )}
+                      ) : (
+                        <>
+                          {/* Step 1: Select Round */}
+                          {draft.step === 'round' && (
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 1 — Select a Round</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {Array.from({ length: fight.rounds ?? 3 }, (_, i) => i + 1).map((r) => (
+                                  <button
+                                    key={r}
+                                    onClick={() => updateDraft(fight.id, { step: 'minute', round: r })}
+                                    className="px-5 py-3 rounded-xl border-2 border-gray-700 text-white font-bold hover:border-yellow-600 hover:bg-yellow-900/20 transition-all"
+                                  >
+                                    Round {r}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
-                      <p className="text-xs text-gray-500 mb-2">
-                        Select a minute (1–{maxMinute}) — {takenMinutes.length}/{maxMinute} claimed:
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {Array.from({ length: maxMinute }, (_, i) => i + 1).map((min) => {
-                          const isMyPick = myBet?.minute === min
-                          const takenByOther =
-                            takenMinutes.includes(min) && !isMyPick
-                          return (
-                            <button
-                              key={min}
-                              onClick={() =>
-                                !takenByOther && !stoppageBetPlacing && !isMyPick &&
-                                placeStoppageBet(fight.id, min)
-                              }
-                              disabled={takenByOther || stoppageBetPlacing}
-                              className={`w-9 h-9 rounded-lg text-sm font-bold transition-all ${
-                                isMyPick
-                                  ? 'bg-yellow-500 text-black ring-2 ring-yellow-300'
-                                  : takenByOther
-                                  ? 'bg-gray-800 text-gray-700 cursor-not-allowed'
-                                  : 'bg-gray-800 text-gray-300 hover:bg-yellow-900/50 hover:text-yellow-300 cursor-pointer'
-                              }`}
-                            >
-                              {min}
-                            </button>
-                          )
-                        })}
-                      </div>
+                          {/* Step 2: Select Minute within round */}
+                          {draft.step === 'minute' && draft.round != null && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-3">
+                                <button onClick={() => updateDraft(fight.id, { step: 'round', round: null, minute: null })} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {draft.round} — Select a Minute</p>
+                              </div>
+                              <div className="flex gap-2 flex-wrap">
+                                {[0, 1, 2, 3, 4].map((clockMin) => {
+                                  const minutePick = clockMin + 1
+                                  const taken = takenInMinute(draft.round!, minutePick)
+                                  const full = taken >= 60
+                                  return (
+                                    <button
+                                      key={clockMin}
+                                      onClick={() => !full && updateDraft(fight.id, { step: 'second', minute: minutePick, second: 0 })}
+                                      disabled={full}
+                                      className={`px-4 py-3 rounded-xl border-2 font-bold transition-all ${
+                                        full
+                                          ? 'border-gray-800 text-gray-700 cursor-not-allowed'
+                                          : 'border-gray-700 text-white hover:border-yellow-600 hover:bg-yellow-900/20'
+                                      }`}
+                                    >
+                                      <span className="text-base">{clockMin}:__</span>
+                                      {taken > 0 && <span className="block text-xs text-gray-500 font-normal">{taken}/60 taken</span>}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
 
-                      {!myBet && (
-                        <p className="text-xs text-gray-600 mt-2 italic">
-                          Contact the organizer to pay ${fee} after selecting your minute.
-                        </p>
-                      )}
-                      {stoppageBetError[fight.id] && (
-                        <p className="text-red-400 text-xs mt-2">{stoppageBetError[fight.id]}</p>
+                          {/* Step 3: Second slider + Confirm */}
+                          {draft.step === 'second' && draft.round != null && draft.minute != null && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-4">
+                                <button onClick={() => updateDraft(fight.id, { step: 'minute', minute: null, second: 0 })} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {draft.round}, Minute {draft.minute - 1}:__ — Pick your second</p>
+                              </div>
+
+                              <div className="text-center mb-4">
+                                <p className="text-5xl font-black text-yellow-400 tabular-nums">
+                                  {draft.minute - 1}:{draft.second.toString().padStart(2, '0')}
+                                </p>
+                                <p className="text-gray-500 text-sm mt-1">Round {draft.round}</p>
+                              </div>
+
+                              <input
+                                type="range"
+                                min={0}
+                                max={59}
+                                value={draft.second}
+                                onChange={(e) => updateDraft(fight.id, { second: parseInt(e.target.value) })}
+                                className="w-full accent-yellow-500 mb-4"
+                              />
+                              <div className="flex justify-between text-xs text-gray-600 mb-5">
+                                <span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:59</span>
+                              </div>
+
+                              <button
+                                onClick={() => confirmStoppageBet(fight.id)}
+                                disabled={draft.placing}
+                                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-500 text-black font-black py-3 rounded-xl transition-colors"
+                              >
+                                {draft.placing ? 'Checking…' : `Confirm Pick — R${draft.round} ${draft.minute - 1}:${draft.second.toString().padStart(2, '0')}`}
+                              </button>
+                              <p className="text-xs text-gray-600 text-center mt-2 italic">Picks are final and cannot be changed after confirming.</p>
+                            </div>
+                          )}
+
+                          {draft.error && (
+                            <p className="text-red-400 text-sm mt-3">{draft.error}</p>
+                          )}
+
+                          {draft.step === 'round' && (
+                            <p className="text-xs text-gray-600 mt-3 italic">
+                              After locking in, contact the organizer to pay ${fee}.
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   )
@@ -610,18 +699,23 @@ export default function PlayPage() {
                   {pick?.method_pick && pick.method_pick !== 'Decision' && (
                     <div>
                       <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Round</p>
-                      <input
-                        type="number"
-                        min={1}
-                        max={fight.rounds}
-                        value={pick.round_pick}
-                        onChange={(e) =>
-                          !isLocked && updatePick(fight.id, 'round_pick', e.target.value)
-                        }
-                        disabled={isLocked}
-                        placeholder={`1 – ${fight.rounds}`}
-                        className="w-32 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors"
-                      />
+                      <div className="flex gap-2 flex-wrap">
+                        {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => !isLocked && updatePick(fight.id, 'round_pick', String(r))}
+                            disabled={isLocked}
+                            className={`w-12 h-10 rounded-xl border-2 text-sm font-bold transition-all ${
+                              pick?.round_pick === String(r)
+                                ? 'border-purple-500 bg-purple-900/30 text-white'
+                                : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                            } ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                          >
+                            R{r}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
 

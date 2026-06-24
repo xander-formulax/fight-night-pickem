@@ -622,6 +622,7 @@ export default function AdminPage() {
   const [importingSaving, setImportingSaving] = useState(false)
   const [importSuccess, setImportSuccess] = useState('')
   const [selectedFights, setSelectedFights] = useState<Record<string, Set<number>>>({})
+  const [fightRoundsOverrides, setFightRoundsOverrides] = useState<Record<string, 3 | 5>>({})
 
   function toggleFight(date: string, idx: number) {
     setSelectedFights((prev) => {
@@ -645,7 +646,7 @@ export default function AdminPage() {
 
   // stoppage jackpot
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
-  const [stopMinuteInputs, setStopMinuteInputs] = useState<Record<string, string>>({})
+  const [stopActual, setStopActual] = useState<Record<string, { round: string; minute: string; second: string }>>({})
   const [stoppageWinners, setStoppageWinners] = useState<Record<string, string>>({})
 
   // reset
@@ -765,11 +766,16 @@ export default function AdminPage() {
     await loadData()
   }
 
+  async function lockAllFights() {
+    if (!confirm("Lock all fights? No new pick'em entries will be accepted.")) return
+    setFights((prev) => prev.map((f) => f.status === 'upcoming' ? { ...f, status: 'locked' as const } : f))
+    await fetch('/api/lock-all-fights', { method: 'POST' })
+  }
+
   async function advanceStatus(fight: Fight) {
-    const next = fight.status === 'upcoming' ? 'locked' : fight.status === 'locked' ? 'complete' : null
-    if (!next) return
-    setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: next } : f))
-    await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: fight.id, status: next }) })
+    if (fight.status !== 'locked') return
+    setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: 'complete' as const } : f))
+    await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: fight.id, status: 'complete' }) })
   }
 
   // ── players ───────────────────────────────────────────────────────────────
@@ -809,24 +815,29 @@ export default function AdminPage() {
   }
 
   async function declareStoppageWinner(fightId: string) {
-    const minuteStr = stopMinuteInputs[fightId]
-    const minute = parseInt(minuteStr ?? '', 10)
-    if (!minute) return
+    const a = stopActual[fightId]
+    if (!a) return
+    const round = parseInt(a.round, 10)
+    const minute = parseInt(a.minute, 10)  // clock minute 0-4
+    const second = parseInt(a.second || '0', 10)
+    if (!round || isNaN(minute) || isNaN(second)) return
     const res = await fetch('/api/resolve-stoppage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fight_id: fightId, actual_minute: minute }),
+      body: JSON.stringify({ fight_id: fightId, actual_round: round, actual_minute: minute, actual_second: second }),
     })
     const result = await res.json()
     if (result.winner) {
       const playerName = players.find((p) => p.id === result.winner.player_id)?.name ?? 'Unknown'
+      const m = result.winner.minute_pick - 1
+      const s = String(result.winner.second_pick).padStart(2, '0')
       setStoppageWinners((prev) => ({
         ...prev,
-        [fightId]: `${playerName} picked minute ${result.winner.minute}`,
+        [fightId]: `${playerName} — R${result.winner.round_pick} ${m}:${s}`,
       }))
     } else {
       setStoppageWinners((prev) => ({
         ...prev,
-        [fightId]: `No winner — no activated bets at or below minute ${minute}`,
+        [fightId]: `No winner — no activated bets at or before R${round} ${minute}:${String(second).padStart(2, '0')}`,
       }))
     }
   }
@@ -878,7 +889,10 @@ export default function AdminPage() {
 
   async function importCard(group: ImportEventGroup) {
     const selected = selectedFights[group.date] ?? new Set<number>()
-    const fightsToImport = group.fights.filter((_, i) => selected.has(i))
+    const fightsToImport = group.fights
+      .map((f, i) => ({ fight: f, index: i }))
+      .filter(({ index }) => selected.has(index))
+      .map(({ fight, index }) => ({ ...fight, rounds: fightRoundsOverrides[`${group.date}-${index}`] ?? 3 }))
     if (fightsToImport.length === 0) { setImportError('Select at least one fight.'); return }
     setImportingSaving(true)
     setImportSuccess('')
@@ -1248,6 +1262,21 @@ export default function AdminPage() {
                               {f.odds_b > 0 ? `+${f.odds_b}` : f.odds_b}
                             </span>
                             {f.book && <span className="text-gray-700 text-xs ml-1">{f.book}</span>}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                const key = `${group.date}-${i}`
+                                setFightRoundsOverrides((prev) => ({ ...prev, [key]: prev[key] === 5 ? 3 : 5 }))
+                              }}
+                              className={`ml-auto text-xs font-bold px-2 py-0.5 rounded border transition-colors ${
+                                (fightRoundsOverrides[`${group.date}-${i}`] ?? 3) === 5
+                                  ? 'border-yellow-600 text-yellow-400 bg-yellow-900/20'
+                                  : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                              }`}
+                            >
+                              {(fightRoundsOverrides[`${group.date}-${i}`] ?? 3) === 5 ? '5R' : '3R'}
+                            </button>
                           </label>
                         ))}
                       </div>
@@ -1391,7 +1420,7 @@ export default function AdminPage() {
               .map((fight) => {
                 const fightBets = stoppageBets
                   .filter((b) => b.fight_id === fight.id)
-                  .sort((a, b) => a.minute - b.minute)
+                  .sort((a, b) => a.round_pick !== b.round_pick ? a.round_pick - b.round_pick : a.minute_pick !== b.minute_pick ? a.minute_pick - b.minute_pick : a.second_pick - b.second_pick)
                 return (
                   <div key={fight.id} className="bg-gray-900 rounded-xl overflow-hidden">
                     <div className="px-5 py-3 border-b border-gray-800 flex flex-wrap items-center gap-3">
@@ -1424,7 +1453,7 @@ export default function AdminPage() {
                               <td className="px-4 py-2.5 text-white font-medium">{playerName}</td>
                               <td className="px-4 py-2.5">
                                 <span className="bg-yellow-900/40 text-yellow-300 font-black px-2 py-0.5 rounded text-sm">
-                                  Min {bet.minute}
+                                  R{bet.round_pick} {bet.minute_pick - 1}:{String(bet.second_pick).padStart(2, '0')}
                                 </span>
                               </td>
                               <td className="px-4 py-2.5">
@@ -1450,7 +1479,17 @@ export default function AdminPage() {
 
       {/* ── SECTION 4: Fight Status & Scoring ─────────────────────────────── */}
       <section className="mb-10">
-        <SectionHeader>Fight Status &amp; Scoring</SectionHeader>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <SectionHeader>Fight Status &amp; Scoring</SectionHeader>
+          {fights.some((f) => f.status === 'upcoming') && (
+            <button
+              onClick={lockAllFights}
+              className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-5 py-2 rounded-lg text-sm transition-colors"
+            >
+              🔒 Lock All Fights
+            </button>
+          )}
+        </div>
         <div className="space-y-4">
           {fights.length === 0 && <div className="bg-gray-900 rounded-xl p-6 text-center text-gray-600">Add fights above to manage their status.</div>}
           {fights.map((fight) => {
@@ -1466,9 +1505,9 @@ export default function AdminPage() {
                     <h3 className="text-white font-bold">{fight.fighter_a} <span className="text-gray-500">vs</span> {fight.fighter_b}</h3>
                     <p className="text-gray-500 text-sm">{fight.rounds}R &bull; {fight.fighter_a}: {formatOdds(fight.odds_a)} &bull; {fight.fighter_b}: {formatOdds(fight.odds_b)}</p>
                   </div>
-                  {fight.status !== 'complete' && (
+                  {fight.status === 'locked' && (
                     <button onClick={() => advanceStatus(fight)} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shrink-0">
-                      {fight.status === 'upcoming' ? 'Lock Picks' : 'Mark Complete'} &rarr;
+                      Mark Complete &rarr;
                     </button>
                   )}
                 </div>
@@ -1517,27 +1556,45 @@ export default function AdminPage() {
                 {fight.status === 'complete' && stoppageBets.some((b) => b.fight_id === fight.id) && (
                   <div className="mt-4 pt-4 border-t border-gray-800">
                     <p className="text-xs text-yellow-500 uppercase tracking-wider font-semibold mb-3">Stoppage Jackpot</p>
-                    {fight.stoppage_actual_minute != null && (
+                    {fight.stoppage_actual_round != null && (
                       <p className="text-xs text-gray-500 mb-2">
-                        Resolved at minute {fight.stoppage_actual_minute}
+                        Resolved: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
                       </p>
                     )}
                     <div className="flex flex-wrap gap-3 items-end">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">Actual Stoppage Minute</label>
+                        <label className="block text-xs text-gray-500 mb-1">Round</label>
                         <input
-                          type="number"
-                          min={1}
-                          max={fight.rounds * 5}
-                          value={stopMinuteInputs[fight.id] ?? (fight.stoppage_actual_minute != null ? String(fight.stoppage_actual_minute) : '')}
-                          onChange={(e) => setStopMinuteInputs((prev) => ({ ...prev, [fight.id]: e.target.value }))}
-                          placeholder={`1–${fight.rounds * 5}`}
-                          className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
+                          type="number" min={1} max={fight.rounds}
+                          value={stopActual[fight.id]?.round ?? ''}
+                          onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], round: e.target.value } }))}
+                          placeholder="1"
+                          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Clock (0–4)</label>
+                        <input
+                          type="number" min={0} max={4}
+                          value={stopActual[fight.id]?.minute ?? ''}
+                          onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: e.target.value } }))}
+                          placeholder="0"
+                          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Second (0–59)</label>
+                        <input
+                          type="number" min={0} max={59}
+                          value={stopActual[fight.id]?.second ?? ''}
+                          onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))}
+                          placeholder="0"
+                          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
                         />
                       </div>
                       <button
                         onClick={() => declareStoppageWinner(fight.id)}
-                        disabled={!stopMinuteInputs[fight.id]}
+                        disabled={!stopActual[fight.id]?.round}
                         className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-black disabled:text-gray-600 font-bold px-4 py-2 rounded-lg text-sm transition-colors"
                       >
                         Declare Jackpot Winner
