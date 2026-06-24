@@ -241,7 +241,8 @@ export default function LeaderboardPage() {
       .channel('leaderboard-scores')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, () => loadData())
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    const interval = setInterval(() => loadData(), 15000)
+    return () => { supabase.removeChannel(channel); clearInterval(interval) }
   }, [loadData])
 
   const activeComp = competitions.find((c) => c.id === activeCompId)

@@ -139,7 +139,11 @@ export default function PlayPage() {
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    loadData()
+    const interval = setInterval(() => loadData(), 15000)
+    return () => clearInterval(interval)
+  }, [loadData])
 
   function updatePick(fightId: string, field: keyof PickState, value: string) {
     setPicks((prev) => ({
