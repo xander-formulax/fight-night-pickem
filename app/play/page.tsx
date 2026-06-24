@@ -348,8 +348,8 @@ export default function PlayPage() {
                             {': '}<span className="text-green-400 font-semibold">{s.pct}%</span>
                           </span>
                         ))}
-                        {(comp.house_cut_pct ?? 0) > 0 && (
-                          <span className="text-xs text-gray-600">· {comp.house_cut_pct}% house</span>
+                        {(comp.expense_cut_pct ?? 0) > 0 && (
+                          <span className="text-xs text-gray-600">· {comp.expense_cut_pct}% expense cut</span>
                         )}
                       </div>
                     )}

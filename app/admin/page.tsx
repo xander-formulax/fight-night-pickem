@@ -34,8 +34,8 @@ const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
 // ─── competition form ───────────────────────────────────────────────────────
 
 interface SplitRow { place: number; pct: string }
-interface CompFormData { id?: string; name: string; entry_fee: string; description: string; house_cut_pct: string; prize_splits: SplitRow[] }
-const blankComp = (): CompFormData => ({ name: '', entry_fee: '', description: '', house_cut_pct: '0', prize_splits: [] })
+interface CompFormData { id?: string; name: string; entry_fee: string; description: string; expense_cut_pct: string; prize_splits: SplitRow[] }
+const blankComp = (): CompFormData => ({ name: '', entry_fee: '', description: '', expense_cut_pct: '50', prize_splits: [] })
 
 function ordinal(n: number) {
   if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd'; return `${n}th`
@@ -43,15 +43,36 @@ function ordinal(n: number) {
 
 function parseFee(fee: string) { return parseFloat(fee.replace(/[^0-9.]/g, '')) || 0 }
 
-function calcPrizeBreakdown(comp: Competition, playerCount: number) {
-  const pot = parseFee(comp.entry_fee) * playerCount
-  const house = pot * ((comp.house_cut_pct ?? 0) / 100)
-  const prizePot = pot - house
-  return { pot, house, prizePot, places: (comp.prize_splits ?? []).map(s => ({ place: s.place, pct: s.pct, amount: prizePot * (s.pct / 100) })) }
+function calcExpenseRecovery(comps: Competition[], players: Player[], partyCostTarget: number) {
+  let totalExpenseContrib = 0
+  const poolData = comps.map((comp) => {
+    const paidCount = players.filter((p) => p.competition_id === comp.id && p.paid).length
+    const fee = parseFee(comp.entry_fee)
+    const expensePct = (comp.expense_cut_pct ?? 50) / 100
+    const totalPaid = paidCount * fee
+    const expenseContrib = totalPaid * expensePct
+    totalExpenseContrib += expenseContrib
+    return { comp, paidCount, fee, totalPaid, expenseContrib }
+  })
+  const expenseCovered = Math.min(totalExpenseContrib, partyCostTarget)
+  const surplus = Math.max(0, totalExpenseContrib - partyCostTarget)
+  const expenseStillNeeded = Math.max(0, partyCostTarget - totalExpenseContrib)
+  return {
+    totalExpenseContrib,
+    expenseCovered,
+    surplus,
+    expenseStillNeeded,
+    poolData: poolData.map((p) => {
+      const basePrize = p.totalPaid * (1 - (p.comp.expense_cut_pct ?? 50) / 100)
+      const poolSurplus = totalExpenseContrib > 0 ? (p.expenseContrib / totalExpenseContrib) * surplus : 0
+      return { ...p, basePrize, actualPrizePool: basePrize + poolSurplus }
+    }),
+  }
 }
 
-function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
+function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTarget, existingExpenseCovered }: {
   initial: CompFormData; onSave: (d: CompFormData) => void; onCancel: () => void; saving: boolean; error: string
+  partyCostTarget: number; existingExpenseCovered: number
 }) {
   const [form, setForm] = useState(initial)
   const set = (k: keyof CompFormData, v: string) => setForm((p) => ({ ...p, [k]: v }))
@@ -73,11 +94,24 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
   const remaining = 100 - splitTotal
 
   const feeNum = parseFee(form.entry_fee)
-  const houseCutNum = parseFloat(form.house_cut_pct) || 0
+  const expenseCutNum = parseFloat(form.expense_cut_pct) || 0
   const calcCount = Math.max(0, parseInt(calcPlayers) || 0)
   const calcPot = feeNum * calcCount
-  const calcHouse = calcPot * (houseCutNum / 100)
-  const calcPrizePot = calcPot - calcHouse
+
+  // Expense recovery calc for this pool's calculator
+  const remainingExpenseNeeded = Math.max(0, partyCostTarget - existingExpenseCovered)
+  const expensePerPlayer = feeNum * (expenseCutNum / 100)
+  const playersToBreakeven = partyCostTarget > 0 && expensePerPlayer > 0
+    ? Math.ceil(remainingExpenseNeeded / expensePerPlayer)
+    : null
+
+  // At calcCount players, how much goes to expenses vs prizes?
+  const thisPoolExpenseContrib = expenseCutNum > 0 ? feeNum * calcCount * (expenseCutNum / 100) : 0
+  const thisPoolSurplus = partyCostTarget > 0
+    ? Math.max(0, thisPoolExpenseContrib - remainingExpenseNeeded)
+    : 0
+  const actualExpenseTaken = thisPoolExpenseContrib - thisPoolSurplus
+  const calcPrizePot = calcPot - actualExpenseTaken
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
@@ -96,15 +130,15 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
         <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. Top 3 places paid out" className={inputCls} />
       </div>
 
-      {/* House cut */}
+      {/* Expense cut */}
       <div>
-        <label className="block text-xs text-gray-400 mb-1">House Cut %</label>
-        <p className="text-xs text-gray-600 mb-1.5">Taken off the pot before prize splits — use for party expenses, supplies, etc.</p>
+        <label className="block text-xs text-gray-400 mb-1">Expense Cut %</label>
+        <p className="text-xs text-gray-600 mb-1.5">Portion of each buy-in that goes toward party cost recovery. Once the target is met, 100% goes to prizes.</p>
         <div className="flex items-center gap-2">
-          <input type="number" min={0} max={100} value={form.house_cut_pct} onChange={(e) => set('house_cut_pct', e.target.value)} placeholder="0" className="w-24" style={{ background:'#1f2937', border:'1px solid #374151', borderRadius:'8px', padding:'6px 12px', color:'white', outline:'none', fontSize:'14px' }} />
+          <input type="number" min={0} max={100} value={form.expense_cut_pct} onChange={(e) => set('expense_cut_pct', e.target.value)} placeholder="50" className="w-24" style={{ background:'#1f2937', border:'1px solid #374151', borderRadius:'8px', padding:'6px 12px', color:'white', outline:'none', fontSize:'14px' }} />
           <span className="text-gray-400 text-sm">%</span>
-          {feeNum > 0 && houseCutNum > 0 && calcCount > 0 && (
-            <span className="text-gray-500 text-xs">= ${calcHouse.toFixed(0)} of a ${calcPot.toFixed(0)} pot ({calcCount} players)</span>
+          {feeNum > 0 && expenseCutNum > 0 && (
+            <span className="text-gray-500 text-xs">= ${(feeNum * expenseCutNum / 100).toFixed(2)} per player</span>
           )}
         </div>
       </div>
@@ -114,7 +148,7 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
         <div className="flex items-center justify-between mb-2">
           <div>
             <label className="block text-xs text-gray-400">Prize Splits</label>
-            <p className="text-xs text-gray-600">% of pot after house cut. Must total 100%.</p>
+            <p className="text-xs text-gray-600">% of prize pool. Must total 100%.</p>
           </div>
           <button type="button" onClick={addPlace} className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg transition-colors">+ Add Place</button>
         </div>
@@ -176,16 +210,31 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
                 <span className="text-gray-500">Total pot</span>
                 <span className="text-white font-semibold">${calcPot.toLocaleString()}</span>
               </div>
-              {houseCutNum > 0 && (
+              {expenseCutNum > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">House cut ({houseCutNum}%)</span>
-                  <span className="text-orange-400 font-semibold">−${calcHouse.toLocaleString()}</span>
+                  <span className="text-gray-500">
+                    Expense cut ({expenseCutNum}%)
+                    {partyCostTarget > 0 && thisPoolSurplus > 0 && <span className="text-green-500 ml-1">· target met!</span>}
+                  </span>
+                  <span className="text-orange-400 font-semibold">
+                    −${actualExpenseTaken.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {thisPoolSurplus > 0 && <span className="text-gray-600 text-xs"> (${thisPoolSurplus.toFixed(0)} back)</span>}
+                  </span>
                 </div>
               )}
-              {(houseCutNum > 0 || form.prize_splits.length > 0) && (
+              {partyCostTarget > 0 && expenseCutNum > 0 && playersToBreakeven !== null && (
+                <div className="text-xs text-gray-600 pb-1">
+                  {playersToBreakeven <= 0
+                    ? 'Party expenses already covered by other pools.'
+                    : calcCount >= playersToBreakeven
+                    ? `Target covered at player ${playersToBreakeven} — remaining ${calcCount - playersToBreakeven} go 100% to prizes.`
+                    : `Need ${playersToBreakeven} players to cover remaining $${remainingExpenseNeeded.toFixed(0)} in expenses.`}
+                </div>
+              )}
+              {(expenseCutNum > 0 || form.prize_splits.length > 0) && (
                 <div className="flex justify-between text-sm border-t border-gray-700 pt-1.5">
                   <span className="text-gray-400">Prize pool</span>
-                  <span className="text-white font-bold">${calcPrizePot.toLocaleString()}</span>
+                  <span className="text-white font-bold">${calcPrizePot.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                 </div>
               )}
               {form.prize_splits.length > 0 && (
@@ -204,8 +253,8 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error }: {
                   })}
                 </div>
               )}
-              {form.prize_splits.length === 0 && houseCutNum === 0 && (
-                <p className="text-gray-700 text-xs italic">Add a house cut or prize splits above to see the breakdown.</p>
+              {form.prize_splits.length === 0 && expenseCutNum === 0 && (
+                <p className="text-gray-700 text-xs italic">Add an expense cut or prize splits above to see the breakdown.</p>
               )}
             </div>
           ) : (
@@ -296,6 +345,11 @@ export default function AdminPage() {
   const [fights, setFights] = useState<Fight[]>([])
   const [dataLoading, setDataLoading] = useState(false)
 
+  // party cost recovery
+  const [partyCostTarget, setPartyCostTarget] = useState(0)
+  const [partyCostInput, setPartyCostInput] = useState('')
+  const [partyCostSaving, setPartyCostSaving] = useState(false)
+
   // competition form
   const [showAddComp, setShowAddComp] = useState(false)
   const [editingCompId, setEditingCompId] = useState<string | null>(null)
@@ -344,10 +398,11 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     setDataLoading(true)
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: playersData }, { data: fightsData }] = await Promise.all([
+    const [{ data: compsData }, { data: playersData }, { data: fightsData }, settingsRes] = await Promise.all([
       supabase.from('competitions').select('*').order('created_at'),
       supabase.from('players').select('*').order('created_at'),
       supabase.from('fights').select('*').order('fight_number'),
+      fetch('/api/event-settings'),
     ])
     if (compsData) setCompetitions(compsData)
     if (playersData) setPlayers(playersData)
@@ -360,6 +415,12 @@ export default function AdminPage() {
         })
         return next
       })
+    }
+    if (settingsRes.ok) {
+      const settings = await settingsRes.json()
+      const target = parseFloat(settings.party_cost_target) || 0
+      setPartyCostTarget(target)
+      setPartyCostInput(target > 0 ? String(target) : '')
     }
     setDataLoading(false)
   }, [])
@@ -397,12 +458,23 @@ export default function AdminPage() {
     setCompSaving(true)
     const res = await fetch('/api/upsert-competition', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: data.id, name: data.name, entry_fee: data.entry_fee, description: data.description, house_cut_pct: parseFloat(data.house_cut_pct) || 0, prize_splits: splits }),
+      body: JSON.stringify({ id: data.id, name: data.name, entry_fee: data.entry_fee, description: data.description, expense_cut_pct: parseFloat(data.expense_cut_pct) || 0, prize_splits: splits }),
     })
     const result = await res.json()
     if (!res.ok) setCompError(result.error ?? 'Failed to save.')
     else { setShowAddComp(false); setEditingCompId(null); await loadData() }
     setCompSaving(false)
+  }
+
+  async function savePartyCost() {
+    setPartyCostSaving(true)
+    const target = Math.max(0, parseFloat(partyCostInput) || 0)
+    const res = await fetch('/api/event-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ party_cost_target: target }),
+    })
+    if (res.ok) setPartyCostTarget(target)
+    setPartyCostSaving(false)
   }
 
   async function deleteComp(id: string) {
@@ -549,6 +621,20 @@ export default function AdminPage() {
   const paidCount = players.filter((p) => p.paid).length
   const activatedCount = players.filter((p) => p.activated).length
 
+  const expenseRecovery = calcExpenseRecovery(competitions, players, partyCostTarget)
+
+  function getExistingExpenseCovered(excludeCompId?: string) {
+    return Math.min(
+      competitions
+        .filter((c) => c.id !== excludeCompId)
+        .reduce((sum, c) => {
+          const paid = players.filter((p) => p.competition_id === c.id && p.paid).length
+          return sum + paid * parseFee(c.entry_fee) * ((c.expense_cut_pct ?? 50) / 100)
+        }, 0),
+      partyCostTarget
+    )
+  }
+
   // ── main UI ───────────────────────────────────────────────────────────────
 
   return (
@@ -595,9 +681,90 @@ export default function AdminPage() {
           )}
         </div>
 
+        {/* Party Cost Recovery card */}
+        <div className="bg-gray-900 rounded-xl p-5 mb-5 border border-gray-800">
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-3">Party Cost Recovery</p>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <label className="text-sm text-gray-400 shrink-0">Expense Target</label>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-sm">$</span>
+              <input
+                type="number" min={0} step={1}
+                value={partyCostInput}
+                onChange={(e) => setPartyCostInput(e.target.value)}
+                placeholder="0"
+                className="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <button
+              onClick={savePartyCost}
+              disabled={partyCostSaving}
+              className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            >
+              {partyCostSaving ? 'Saving…' : 'Set Target'}
+            </button>
+            {partyCostTarget > 0 && <span className="text-gray-600 text-xs">Current target: ${partyCostTarget.toLocaleString()}</span>}
+          </div>
+
+          {partyCostTarget > 0 && (() => {
+            const { expenseCovered, expenseStillNeeded, surplus, poolData } = expenseRecovery
+            const pct = Math.min(100, (expenseCovered / partyCostTarget) * 100)
+            const fullyFunded = expenseStillNeeded === 0
+            return (
+              <div className="space-y-3">
+                {/* Progress bar */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className={fullyFunded ? 'text-green-400 font-semibold' : 'text-gray-400'}>
+                      {fullyFunded ? 'Party expenses fully covered!' : `$${expenseCovered.toFixed(0)} of $${partyCostTarget.toLocaleString()} recovered`}
+                    </span>
+                    <span className="text-gray-500">{pct.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${fullyFunded ? 'bg-green-500' : 'bg-orange-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {!fullyFunded && <p className="text-gray-600 text-xs mt-1">${expenseStillNeeded.toFixed(0)} still needed</p>}
+                  {surplus > 0 && <p className="text-green-600 text-xs mt-1">+${surplus.toFixed(0)} surplus returned to prize pools</p>}
+                </div>
+                {/* Per-pool breakdown */}
+                {poolData.length > 0 && (
+                  <div className="space-y-1">
+                    {poolData.map(({ comp, paidCount: pc, fee, expenseContrib, actualPrizePool }) => {
+                      if (pc === 0) return null
+                      return (
+                        <div key={comp.id} className="flex flex-wrap gap-x-3 gap-y-0 text-xs text-gray-600">
+                          <span className="text-gray-500 font-medium">{comp.name}</span>
+                          <span>{pc} paid × ${fee.toFixed(0)} × {comp.expense_cut_pct ?? 50}%</span>
+                          <span className="text-orange-500">= ${expenseContrib.toFixed(0)} to expenses</span>
+                          <span className="text-green-500">→ ${actualPrizePool.toFixed(0)} prize pool</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {partyCostTarget === 0 && (
+            <p className="text-gray-700 text-xs italic">Set a dollar amount above to track party expense recovery across all pools.</p>
+          )}
+        </div>
+
         {showAddComp && (
           <div className="mb-4">
-            <CompetitionForm initial={blankComp()} onSave={saveComp} onCancel={() => { setShowAddComp(false); setCompError('') }} saving={compSaving} error={compError} />
+            <CompetitionForm
+              initial={blankComp()}
+              onSave={saveComp}
+              onCancel={() => { setShowAddComp(false); setCompError('') }}
+              saving={compSaving}
+              error={compError}
+              partyCostTarget={partyCostTarget}
+              existingExpenseCovered={getExistingExpenseCovered(undefined)}
+            />
           </div>
         )}
 
@@ -610,16 +777,20 @@ export default function AdminPage() {
         <div className="space-y-3">
           {competitions.map((comp) => {
             const playerCount = players.filter((p) => p.competition_id === comp.id).length
+            const paidPlayerCount = players.filter((p) => p.competition_id === comp.id && p.paid).length
+            const poolRecovery = expenseRecovery.poolData.find((d) => d.comp.id === comp.id)
             if (editingCompId === comp.id) {
               return (
                 <div key={comp.id} className="bg-gray-900 rounded-xl p-5">
                   <p className="text-sm text-gray-400 mb-3">Editing: {comp.name}</p>
                   <CompetitionForm
-                    initial={{ id: comp.id, name: comp.name, entry_fee: comp.entry_fee, description: comp.description ?? '', house_cut_pct: String(comp.house_cut_pct ?? 0), prize_splits: (comp.prize_splits ?? []).map((s) => ({ place: s.place, pct: String(s.pct) })) }}
+                    initial={{ id: comp.id, name: comp.name, entry_fee: comp.entry_fee, description: comp.description ?? '', expense_cut_pct: String(comp.expense_cut_pct ?? 50), prize_splits: (comp.prize_splits ?? []).map((s) => ({ place: s.place, pct: String(s.pct) })) }}
                     onSave={saveComp}
                     onCancel={() => { setEditingCompId(null); setCompError('') }}
                     saving={compSaving}
                     error={compError}
+                    partyCostTarget={partyCostTarget}
+                    existingExpenseCovered={getExistingExpenseCovered(comp.id)}
                   />
                 </div>
               )
@@ -631,21 +802,21 @@ export default function AdminPage() {
                     <span className="text-white font-bold text-lg">{comp.name}</span>
                     <span className="text-red-400 font-black">{comp.entry_fee}</span>
                     <span className="text-gray-500 text-sm">{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
+                    {(comp.expense_cut_pct ?? 50) > 0 && <span className="text-gray-600 text-xs">{comp.expense_cut_pct ?? 50}% expense cut</span>}
                   </div>
                   {comp.description && <p className="text-gray-500 text-sm mt-0.5">{comp.description}</p>}
-                  {playerCount > 0 && (() => {
-                    const bk = calcPrizeBreakdown(comp, playerCount)
-                    if (bk.places.length === 0 && !comp.house_cut_pct) return null
-                    return (
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                        <span className="text-gray-500">Pot: <span className="text-white font-semibold">${bk.pot.toFixed(0)}</span></span>
-                        {(comp.house_cut_pct ?? 0) > 0 && <span className="text-gray-500">House: <span className="text-orange-400 font-semibold">${bk.house.toFixed(0)}</span> ({comp.house_cut_pct}%)</span>}
-                        {bk.places.map((p) => (
-                          <span key={p.place} className="text-gray-500">{ordinal(p.place)}: <span className="text-green-400 font-semibold">${p.amount.toFixed(0)}</span> ({p.pct}%)</span>
-                        ))}
-                      </div>
-                    )
-                  })()}
+                  {paidPlayerCount > 0 && poolRecovery && (
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                      <span className="text-gray-500">Pot: <span className="text-white font-semibold">${poolRecovery.totalPaid.toFixed(0)}</span></span>
+                      {poolRecovery.expenseContrib > 0 && (
+                        <span className="text-gray-500">Expenses: <span className="text-orange-400 font-semibold">${Math.min(poolRecovery.expenseContrib, partyCostTarget > 0 ? poolRecovery.expenseContrib : poolRecovery.expenseContrib).toFixed(0)}</span></span>
+                      )}
+                      <span className="text-gray-500">Prize pool: <span className="text-green-400 font-semibold">${poolRecovery.actualPrizePool.toFixed(0)}</span></span>
+                      {(comp.prize_splits ?? []).map((s) => (
+                        <span key={s.place} className="text-gray-600">{ordinal(s.place)}: <span className="text-green-500">${(poolRecovery.actualPrizePool * s.pct / 100).toFixed(0)}</span> ({s.pct}%)</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingCompId(comp.id); setShowAddComp(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>
