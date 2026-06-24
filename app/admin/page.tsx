@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
-import type { Competition, Fight, Player, PrizeSplit, Score, StoppageBet } from '@/lib/types'
+import type { Competition, Fight, Pick, Player, PrizeSplit, Score, StoppageBet } from '@/lib/types'
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
 function QRModal({ onClose }: { onClose: () => void }) {
@@ -672,21 +672,35 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
 
+  // tab navigation
+  const [activeTab, setActiveTab] = useState<'fights' | 'players' | 'money' | 'setup'>('fights')
+
+  // manage players
+  const [allPicks, setAllPicks] = useState<Pick[]>([])
+  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null)
+  const [pickEdits, setPickEdits] = useState<Record<string, Record<string, { winner: string; method: string; round: string }>>>({})
+  const [betEdits, setBetEdits] = useState<Record<string, { round: string; minute: string; second: string }>>({})
+  const [savingPickId, setSavingPickId] = useState('')
+  const [savingBetId, setSavingBetId] = useState('')
+  const [clearingPlayer, setClearingPlayer] = useState('')
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setDataLoading(true)
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: playersData }, { data: fightsData }, { data: stoppageBetsData }, { data: scoresData }, settingsRes] = await Promise.all([
+    const [{ data: compsData }, { data: playersData }, { data: fightsData }, { data: stoppageBetsData }, { data: scoresData }, { data: picksData }, settingsRes] = await Promise.all([
       supabase.from('competitions').select('*').order('created_at'),
       supabase.from('players').select('*').order('created_at'),
       supabase.from('fights').select('*').order('fight_number'),
       supabase.from('stoppage_bets').select('*').order('created_at'),
       supabase.from('scores').select('*'),
+      supabase.from('picks').select('*'),
       fetch('/api/event-settings'),
     ])
     if (compsData) setCompetitions(compsData)
     if (playersData) setPlayers(playersData)
     if (stoppageBetsData) setStoppageBets(stoppageBetsData)
     if (scoresData) setScores(scoresData)
+    if (picksData) setAllPicks(picksData)
     if (fightsData) {
       setFights(fightsData)
       setResultForms((prev) => {
@@ -961,6 +975,62 @@ export default function AdminPage() {
     setImportingSaving(false)
   }
 
+  // ── manage players ────────────────────────────────────────────────────────
+
+  function getPickEdit(playerId: string, fightId: string) {
+    if (pickEdits[playerId]?.[fightId]) return pickEdits[playerId][fightId]
+    const pick = allPicks.find((p) => p.player_id === playerId && p.fight_id === fightId)
+    return { winner: pick?.winner_pick ?? '', method: pick?.method_pick ?? '', round: String(pick?.round_pick ?? '') }
+  }
+
+  function setPickEditField(playerId: string, fightId: string, field: string, value: string) {
+    setPickEdits((prev) => ({
+      ...prev,
+      [playerId]: { ...prev[playerId], [fightId]: { ...getPickEdit(playerId, fightId), [field]: value } },
+    }))
+  }
+
+  function getBetEdit(bet: StoppageBet) {
+    return betEdits[bet.id] ?? { round: String(bet.round_pick), minute: String(bet.minute_pick - 1), second: String(bet.second_pick) }
+  }
+
+  async function savePickEdit(playerId: string, fightId: string, edit: { winner: string; method: string; round: string }) {
+    const key = `${playerId}-${fightId}`
+    setSavingPickId(key)
+    await fetch('/api/admin-update-pick', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: playerId, fight_id: fightId, winner_pick: edit.winner, method_pick: edit.method, round_pick: edit.round ? parseInt(edit.round) : null }),
+    })
+    await loadData(true)
+    setSavingPickId('')
+  }
+
+  async function saveBetEdit(betId: string, edit: { round: string; minute: string; second: string }) {
+    setSavingBetId(betId)
+    await fetch('/api/admin-update-stoppage-bet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bet_id: betId, round_pick: parseInt(edit.round), minute_pick: parseInt(edit.minute) + 1, second_pick: parseInt(edit.second) }),
+    })
+    await loadData(true)
+    setSavingBetId('')
+  }
+
+  async function clearPlayerData(playerId: string, mode: 'picks' | 'bet' | 'all') {
+    setClearingPlayer(`${playerId}-${mode}`)
+    await fetch('/api/admin-clear-picks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: playerId, mode }),
+    })
+    if (mode === 'picks' || mode === 'all') {
+      setPickEdits((prev) => { const next = { ...prev }; delete next[playerId]; return next })
+    }
+    await loadData(true)
+    setClearingPlayer('')
+  }
+
   // ── reset ─────────────────────────────────────────────────────────────────
 
   async function resetEvent() {
@@ -1068,8 +1138,23 @@ export default function AdminPage() {
         })}
       </div>
 
+      {/* Tab navigation */}
+      <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-8">
+        {(['fights', 'players', 'money', 'setup'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+              activeTab === tab ? 'bg-white text-black' : 'text-gray-500 hover:text-white'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
       {/* ── SECTION 1: Prize Pool Setup ───────────────────────────────────── */}
-      <section className="mb-10">
+      {activeTab === 'setup' && <section className="mb-10">
         <div className="flex justify-between items-center mb-4">
           <SectionHeader>Prize Pool Setup</SectionHeader>
           {!showAddComp && (
@@ -1224,10 +1309,10 @@ export default function AdminPage() {
             )
           })}
         </div>
-      </section>
+      </section>}
 
       {/* ── SECTION 2: Fight Card Setup ───────────────────────────────────── */}
-      <section className="mb-10">
+      {activeTab === 'fights' && <section className="mb-10">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <SectionHeader>Fights</SectionHeader>
           <div className="flex flex-wrap gap-2">
@@ -1533,10 +1618,161 @@ export default function AdminPage() {
             )
           })}
         </div>
-      </section>
+      </section>}
+
+      {/* ── Players Tab ───────────────────────────────────────────────────── */}
+      {activeTab === 'players' && (
+        <section className="mb-10">
+          <SectionHeader>Manage Players</SectionHeader>
+          {players.length === 0 ? (
+            <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-600">No players yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {players.map((player) => {
+                const isExpanded = expandedPlayerId === player.id
+                const playerPicks = allPicks.filter((p) => p.player_id === player.id)
+                const playerBets = stoppageBets.filter((b) => b.player_id === player.id)
+                const comp = competitions.find((c) => c.id === player.competition_id)
+                return (
+                  <div key={player.id} className="bg-gray-900 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setExpandedPlayerId(isExpanded ? null : player.id)}
+                      className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-gray-800/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-white font-bold">{player.name}</span>
+                        {comp && <span className="text-xs text-gray-500">{comp.name}</span>}
+                        {!player.activated && <span className="text-xs bg-orange-900/40 text-orange-400 px-2 py-0.5 rounded-full">Unpaid</span>}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span>{playerPicks.length}/{fights.length} picks</span>
+                        {playerBets.length > 0 && <span className="text-yellow-600">jackpot</span>}
+                        <span className="text-gray-600">{isExpanded ? '▲' : '▼'}</span>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="border-t border-gray-800 px-5 py-4 space-y-5">
+                        {/* Pick'em picks */}
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Pick&apos;em Picks</p>
+                          <div className="space-y-2">
+                            {fights.map((fight) => {
+                              const edit = getPickEdit(player.id, fight.id)
+                              const key = `${player.id}-${fight.id}`
+                              return (
+                                <div key={fight.id} className="flex flex-wrap items-center gap-2">
+                                  <span className="text-xs text-gray-500 w-14 shrink-0">Fight {fight.fight_number}</span>
+                                  <select
+                                    value={edit.winner}
+                                    onChange={(e) => setPickEditField(player.id, fight.id, 'winner', e.target.value)}
+                                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs"
+                                  >
+                                    <option value="">— no pick —</option>
+                                    <option value={fight.fighter_a}>{fight.fighter_a}</option>
+                                    <option value={fight.fighter_b}>{fight.fighter_b}</option>
+                                  </select>
+                                  <select
+                                    value={edit.method}
+                                    onChange={(e) => setPickEditField(player.id, fight.id, 'method', e.target.value)}
+                                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs"
+                                  >
+                                    <option value="">— method —</option>
+                                    <option value="KO/TKO">KO/TKO</option>
+                                    <option value="Submission">Sub</option>
+                                    <option value="Decision">Dec</option>
+                                  </select>
+                                  {edit.method && edit.method !== 'Decision' && (
+                                    <input
+                                      type="number" min={1} max={fight.rounds}
+                                      value={edit.round}
+                                      onChange={(e) => setPickEditField(player.id, fight.id, 'round', e.target.value)}
+                                      placeholder="Rd"
+                                      className="w-12 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs"
+                                    />
+                                  )}
+                                  <button
+                                    onClick={() => savePickEdit(player.id, fight.id, edit)}
+                                    disabled={!edit.winner || !edit.method || savingPickId === key}
+                                    className="bg-indigo-700 hover:bg-indigo-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs font-semibold transition-colors"
+                                  >
+                                    {savingPickId === key ? '…' : 'Save'}
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Jackpot bet */}
+                        {playerBets.length > 0 && (
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Jackpot Bet</p>
+                            <div className="space-y-2">
+                              {playerBets.map((bet) => {
+                                const fightForBet = fights.find((f) => f.id === bet.fight_id)
+                                const edit = getBetEdit(bet)
+                                return (
+                                  <div key={bet.id} className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-gray-500 w-14 shrink-0">Fight {fightForBet?.fight_number}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-600">R</span>
+                                      <input type="number" min={1} max={fightForBet?.rounds ?? 5} value={edit.round} onChange={(e) => setBetEdits((prev) => ({ ...prev, [bet.id]: { ...getBetEdit(bet), round: e.target.value } }))} className="w-10 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-600">min</span>
+                                      <input type="number" min={0} max={4} value={edit.minute} onChange={(e) => setBetEdits((prev) => ({ ...prev, [bet.id]: { ...getBetEdit(bet), minute: e.target.value } }))} className="w-10 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-600">sec</span>
+                                      <input type="number" min={0} max={59} value={edit.second} onChange={(e) => setBetEdits((prev) => ({ ...prev, [bet.id]: { ...getBetEdit(bet), second: e.target.value } }))} className="w-10 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs" />
+                                    </div>
+                                    <button
+                                      onClick={() => saveBetEdit(bet.id, edit)}
+                                      disabled={savingBetId === bet.id}
+                                      className="bg-yellow-700 hover:bg-yellow-600 disabled:bg-gray-700 text-white px-3 py-1 rounded text-xs font-semibold transition-colors"
+                                    >
+                                      {savingBetId === bet.id ? '…' : 'Save'}
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Danger actions */}
+                        <div className="pt-3 border-t border-gray-800 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => clearPlayerData(player.id, 'picks')}
+                            disabled={clearingPlayer === `${player.id}-picks`}
+                            className="bg-red-900/30 hover:bg-red-900/60 border border-red-800/40 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                          >
+                            {clearingPlayer === `${player.id}-picks` ? 'Clearing…' : 'Clear All Picks'}
+                          </button>
+                          {playerBets.length > 0 && (
+                            <button
+                              onClick={() => clearPlayerData(player.id, 'bet')}
+                              disabled={clearingPlayer === `${player.id}-bet`}
+                              className="bg-red-900/30 hover:bg-red-900/60 border border-red-800/40 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                            >
+                              {clearingPlayer === `${player.id}-bet` ? 'Clearing…' : 'Clear Jackpot Bet'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── SECTION 3: Payments Due ───────────────────────────────────────── */}
       {(() => {
+        if (activeTab !== 'money') return null
         const pendingPickEm = players
           .filter((p) => !p.activated)
           .map((p) => {
@@ -1620,6 +1856,7 @@ export default function AdminPage() {
 
       {/* ── SECTION 5: Payouts ────────────────────────────────────────────── */}
       {(() => {
+        if (activeTab !== 'money') return null
         // Pick'em prizes — compute standings per competition
         const pickEmPayouts: Array<{ playerId: string; playerName: string; label: string; amount: number; paid: boolean }> = []
         if (fights.some((f) => f.status === 'complete')) {
@@ -1734,7 +1971,7 @@ export default function AdminPage() {
       })()}
 
       {/* ── Danger Zone ───────────────────────────────────────────────────── */}
-      <section>
+      {activeTab === 'setup' && <section>
         <h2 className="text-lg font-bold text-red-500 mb-3">Danger Zone</h2>
         <div className="bg-gray-900 border border-red-900/40 rounded-xl p-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1753,7 +1990,7 @@ export default function AdminPage() {
             )}
           </div>
         </div>
-      </section>
+      </section>}
     </div>
   )
 }
