@@ -671,6 +671,9 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
 
+  // expanded result forms (fights with existing results are collapsed by default)
+  const [expandedResults, setExpandedResults] = useState<Set<string>>(new Set())
+
   // tab navigation
   const [activeTab, setActiveTab] = useState<'fights' | 'players' | 'money' | 'setup'>('fights')
 
@@ -904,6 +907,7 @@ export default function AdminPage() {
     }
 
     setSavingResults((prev) => ({ ...prev, [fight.id]: false }))
+    setExpandedResults((prev) => { const s = new Set(prev); s.delete(fight.id); return s })
     await loadData(true)
   }
 
@@ -1516,129 +1520,174 @@ export default function AdminPage() {
                 )}
 
                 {/* Results + Jackpot resolution — complete */}
-                {fight.status === 'complete' && form && (
-                  <div className="px-5 py-5 border-t border-gray-800 space-y-4">
-                    {/* Winner buttons */}
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">Winner</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[fight.fighter_a, fight.fighter_b].map((fighter) => (
-                          <button
-                            key={fighter}
-                            onClick={() => setResult(fight.id, 'winner', fighter)}
-                            className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors ${form.winner === fighter ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                          >
-                            {fighter}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                {fight.status === 'complete' && form && (() => {
+                  const isCollapsed = fight.result_winner != null && !expandedResults.has(fight.id)
 
-                    {/* Method buttons */}
-                    <div>
-                      <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">Method</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['KO/TKO', 'Submission', 'Decision'] as const).map((method) => (
-                          <button
-                            key={method}
-                            onClick={() => setResult(fight.id, 'method', method)}
-                            className={`py-2.5 rounded-xl font-bold text-sm transition-colors ${form.method === method ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                          >
-                            {method}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Stoppage time — shown for KO/TKO and Submission only */}
-                    {form.method && form.method !== 'Decision' && (
-                      <div>
-                        <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">When did it end?</p>
-                        {/* Round buttons */}
-                        <div className="flex gap-2 mb-3">
-                          {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => {
-                            const curRound = stopActual[fight.id]?.round ?? String(fight.stoppage_actual_round ?? '')
+                  if (isCollapsed) {
+                    return (
+                      <div className="px-5 py-3 border-t border-gray-800 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-green-400">
+                            ✓ {fight.result_winner} by {fight.result_method}{fight.result_round != null ? ` (R${fight.result_round})` : ''}
+                          </p>
+                          {stoppageWinners[fight.id] ? (
+                            <p className={`text-xs mt-0.5 ${stoppageWinners[fight.id].startsWith('No winner') ? 'text-gray-500' : 'text-yellow-400'}`}>
+                              Jackpot: {stoppageWinners[fight.id]}
+                            </p>
+                          ) : fight.stoppage_actual_round != null ? (
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              Stoppage: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
+                            </p>
+                          ) : null}
+                          {stoppageWinners[fight.id]?.startsWith('No winner') && (() => {
+                            const nextFight = fights.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
+                            if (!nextFight) return null
+                            const activatedBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
+                            const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+                            const rolloverAmt = activatedBets.length * fee + (fight.jackpot_rollover ?? 0)
                             return (
-                              <button
-                                key={r}
-                                onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { minute: prev[fight.id]?.minute ?? '', second: prev[fight.id]?.second ?? '', round: String(r) } }))}
-                                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${curRound === String(r) ? 'bg-yellow-500 text-black' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-                              >
-                                R{r}
+                              <button onClick={() => rolloverJackpot(fight.id, nextFight.id)} className="mt-2 bg-orange-700 hover:bg-orange-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">
+                                Roll ${rolloverAmt} → Fight {nextFight.fight_number}
                               </button>
                             )
-                          })}
+                          })()}
                         </div>
-                        {/* Clock : Second */}
-                        <div className="flex items-end gap-2">
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-600 mb-1">Minute (0–4)</label>
-                            <input
-                              type="number" inputMode="numeric" min={0} max={4}
-                              value={stopActual[fight.id]?.minute ?? String(fight.stoppage_actual_minute ?? '')}
-                              onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: e.target.value } }))}
-                              placeholder="0"
-                              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-white text-xl text-center font-bold focus:outline-none focus:border-yellow-500"
-                            />
-                          </div>
-                          <div className="pb-3 text-gray-600 font-bold text-xl">:</div>
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-600 mb-1">Second (0–59)</label>
-                            <input
-                              type="number" inputMode="numeric" min={0} max={59}
-                              value={stopActual[fight.id]?.second ?? String(fight.stoppage_actual_second ?? '')}
-                              onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))}
-                              placeholder="0"
-                              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-white text-xl text-center font-bold focus:outline-none focus:border-yellow-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Save */}
-                    <button
-                      onClick={() => saveFullResult(fight)}
-                      disabled={savingResults[fight.id] || !form.winner || !form.method}
-                      className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-xl text-sm transition-colors"
-                    >
-                      {savingResults[fight.id] ? 'Saving…' : 'Save & Score'}
-                    </button>
-
-                    {/* Result summary */}
-                    {fight.result_winner && (
-                      <div className="bg-gray-800/50 rounded-xl p-3 space-y-1">
-                        <p className="text-sm text-white font-semibold">
-                          {fight.result_winner} by {fight.result_method}{fight.result_round != null ? ` (R${fight.result_round})` : ''}
-                        </p>
-                        {stoppageWinners[fight.id] && (
-                          <p className={`text-sm font-semibold ${stoppageWinners[fight.id].startsWith('No winner') ? 'text-gray-500' : 'text-yellow-400'}`}>
-                            Jackpot: {stoppageWinners[fight.id]}
-                          </p>
-                        )}
-                        {fight.stoppage_actual_round != null && !stoppageWinners[fight.id] && (
-                          <p className="text-xs text-gray-600">
-                            Stoppage: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Rollover button — only shown after a no-winner result */}
-                    {stoppageWinners[fight.id]?.startsWith('No winner') && (() => {
-                      const nextFight = fights.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
-                      if (!nextFight) return <p className="text-xs text-gray-700">No next fight to roll over to.</p>
-                      const activatedBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
-                      const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
-                      const rolloverAmt = activatedBets.length * fee + (fight.jackpot_rollover ?? 0)
-                      return (
-                        <button onClick={() => rolloverJackpot(fight.id, nextFight.id)} className="w-full bg-orange-700 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-sm transition-colors">
-                          Roll ${rolloverAmt} → Fight {nextFight.fight_number}
+                        <button
+                          onClick={() => {
+                            setExpandedResults((prev) => { const s = new Set(prev); s.add(fight.id); return s })
+                            setResultForms((prev) => ({ ...prev, [fight.id]: { winner: fight.result_winner ?? '', method: fight.result_method ?? '', round: fight.result_round?.toString() ?? '' } }))
+                            if (fight.stoppage_actual_round != null) {
+                              setStopActual((prev) => ({ ...prev, [fight.id]: { round: String(fight.stoppage_actual_round), minute: String(fight.stoppage_actual_minute ?? ''), second: String(fight.stoppage_actual_second ?? '0') } }))
+                            }
+                          }}
+                          className="text-xs text-gray-600 hover:text-gray-300 shrink-0 pt-0.5"
+                        >
+                          Edit
                         </button>
-                      )
-                    })()}
-                  </div>
-                )}
+                      </div>
+                    )
+                  }
+
+                  const stop = stopActual[fight.id] ?? { round: '', minute: '', second: '0' }
+                  const roundSelected = Boolean(stop.round)
+                  const minuteSelected = stop.minute !== '' && stop.minute !== undefined
+                  const curSecond = parseInt(stop.second || '0', 10)
+
+                  return (
+                    <div className="px-5 py-5 border-t border-gray-800 space-y-4">
+                      {/* Winner buttons */}
+                      <div>
+                        <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">Winner</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[fight.fighter_a, fight.fighter_b].map((fighter) => (
+                            <button
+                              key={fighter}
+                              onClick={() => setResult(fight.id, 'winner', fighter)}
+                              className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors ${form.winner === fighter ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                            >
+                              {fighter}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Method buttons */}
+                      <div>
+                        <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">Method</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['KO/TKO', 'Submission', 'Decision'] as const).map((method) => (
+                            <button
+                              key={method}
+                              onClick={() => setResult(fight.id, 'method', method)}
+                              className={`py-2.5 rounded-xl font-bold text-sm transition-colors ${form.method === method ? 'bg-white text-black' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                            >
+                              {method}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Stoppage time — 3-step flow matching player UI */}
+                      {form.method && form.method !== 'Decision' && (
+                        <div>
+                          <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-3">When did it end?</p>
+
+                          {/* Step 1: Round */}
+                          {!roundSelected && (
+                            <div>
+                              <p className="text-xs text-gray-500 mb-2">Select a round</p>
+                              <div className="flex gap-2">
+                                {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => (
+                                  <button
+                                    key={r}
+                                    onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { round: String(r), minute: '', second: '0' } }))}
+                                    className="flex-1 py-3 rounded-xl border-2 border-gray-700 text-white font-bold hover:border-yellow-600 hover:bg-yellow-900/20 transition-all"
+                                  >
+                                    Round {r}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 2: Minute */}
+                          {roundSelected && !minuteSelected && (
+                            <div>
+                              <div className="flex items-center gap-3 mb-3">
+                                <button onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { round: '', minute: '', second: '0' } }))} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {stop.round} — tap a minute</p>
+                              </div>
+                              <div className="flex gap-2">
+                                {[0, 1, 2, 3, 4].map((m) => (
+                                  <button
+                                    key={m}
+                                    onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: String(m), second: '0' } }))}
+                                    className="flex-1 py-3 rounded-xl border-2 border-gray-700 text-white font-bold hover:border-yellow-600 hover:bg-yellow-900/20 transition-all text-base"
+                                  >
+                                    {m}:__
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step 3: Second slider */}
+                          {roundSelected && minuteSelected && (
+                            <div>
+                              <div className="flex items-center gap-3 mb-4">
+                                <button onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: '', second: '0' } }))} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {stop.round}, Minute {stop.minute} — slide to pick second</p>
+                              </div>
+                              <div className="text-center mb-4">
+                                <p className="text-5xl font-black text-yellow-400 tabular-nums">
+                                  {stop.minute}:{String(curSecond).padStart(2, '0')}
+                                </p>
+                                <p className="text-gray-500 text-sm mt-1">Round {stop.round}</p>
+                              </div>
+                              <input
+                                type="range" min={0} max={59} value={curSecond}
+                                onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))}
+                                className="w-full accent-yellow-500 mb-2"
+                              />
+                              <div className="flex justify-between text-xs text-gray-600 mb-2">
+                                <span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:59</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Save */}
+                      <button
+                        onClick={() => saveFullResult(fight)}
+                        disabled={savingResults[fight.id] || !form.winner || !form.method}
+                        className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-xl text-sm transition-colors"
+                      >
+                        {savingResults[fight.id] ? 'Saving…' : 'Save & Score'}
+                      </button>
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
