@@ -672,8 +672,8 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
 
-  const loadData = useCallback(async () => {
-    setDataLoading(true)
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setDataLoading(true)
     const supabase = getSupabaseBrowser()
     const [{ data: compsData }, { data: playersData }, { data: fightsData }, { data: stoppageBetsData }, { data: scoresData }, settingsRes] = await Promise.all([
       supabase.from('competitions').select('*').order('created_at'),
@@ -701,9 +701,9 @@ export default function AdminPage() {
       const settings = await settingsRes.json()
       const target = parseFloat(settings.party_cost_target) || 0
       setPartyCostTarget(target)
-      setPartyCostInput(target > 0 ? String(target) : '')
+      if (!silent) setPartyCostInput(target > 0 ? String(target) : '')
     }
-    setDataLoading(false)
+    if (!silent) setDataLoading(false)
   }, [])
 
   useEffect(() => {
@@ -712,6 +712,13 @@ export default function AdminPage() {
       loadData()
     }
   }, [loadData])
+
+  // background auto-refresh every 15 seconds
+  useEffect(() => {
+    if (!authed) return
+    const interval = setInterval(() => loadData(true), 15000)
+    return () => clearInterval(interval)
+  }, [authed, loadData])
 
   // ── auth ──────────────────────────────────────────────────────────────────
 
