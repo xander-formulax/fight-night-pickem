@@ -713,11 +713,13 @@ export default function AdminPage() {
     }
   }, [loadData])
 
-  // background auto-refresh every 15 seconds
+  // background auto-refresh every 15 seconds + on tab focus
   useEffect(() => {
     if (!authed) return
     const interval = setInterval(() => loadData(true), 15000)
-    return () => clearInterval(interval)
+    const onVisible = () => { if (document.visibilityState === 'visible') loadData(true) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [authed, loadData])
 
   // ── auth ──────────────────────────────────────────────────────────────────
@@ -1227,13 +1229,21 @@ export default function AdminPage() {
       {/* ── SECTION 2: Fight Card Setup ───────────────────────────────────── */}
       <section className="mb-10">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <SectionHeader>Fight Card Setup</SectionHeader>
-          <div className="flex gap-2">
+          <SectionHeader>Fights</SectionHeader>
+          <div className="flex flex-wrap gap-2">
+            {fights.some((f) => f.status === 'upcoming') && (
+              <button
+                onClick={lockAllFights}
+                className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-4 py-2 rounded-lg text-sm transition-colors"
+              >
+                🔒 Lock All
+              </button>
+            )}
             <button
               onClick={() => { setShowImport((v) => !v); setImportError(''); setImportEvents([]); setImportSuccess('') }}
               className="bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
             >
-              Import from Odds API
+              Import
             </button>
             {!showAddFight && (
               <button onClick={() => { setShowAddFight(true); setEditingFightId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
@@ -1369,35 +1379,45 @@ export default function AdminPage() {
                 </div>
               )
             }
-            return (() => {
-              const fightBetCount = stoppageBets.filter((b) => b.fight_id === fight.id).length
-              return (
-                <div key={fight.id} className="bg-gray-900 rounded-xl p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-gray-500 text-xs font-semibold">FIGHT {fight.fight_number}</span>
-                        <StatusBadge status={fight.status} />
-                        <span className="text-gray-600 text-xs">{fight.rounds}R</span>
-                      </div>
-                      <div className="text-white font-bold">
-                        {fight.fighter_a} <span className={`text-sm font-bold ${fight.odds_a > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_a)})</span>
-                        <span className="text-gray-600 mx-2">vs</span>
-                        {fight.fighter_b} <span className={`text-sm font-bold ${fight.odds_b > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_b)})</span>
-                      </div>
+            const form = resultForms[fight.id]
+            const fightBetCount = stoppageBets.filter((b) => b.fight_id === fight.id).length
+            return (
+              <div key={fight.id} className="bg-gray-900 rounded-xl overflow-hidden">
+                {/* Fight header */}
+                <div className="p-5 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-gray-500 text-xs font-semibold">FIGHT {fight.fight_number}</span>
+                      <StatusBadge status={fight.status} />
+                      <span className="text-gray-600 text-xs">{fight.rounds}R</span>
                     </div>
+                    <div className="text-white font-bold">
+                      {fight.fighter_a} <span className={`text-sm font-bold ${fight.odds_a > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_a)})</span>
+                      <span className="text-gray-600 mx-2">vs</span>
+                      {fight.fighter_b} <span className={`text-sm font-bold ${fight.odds_b > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_b)})</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     {fight.status === 'upcoming' && (
-                      <div className="flex gap-2">
+                      <>
                         <button onClick={() => { setEditingFightId(fight.id); setShowAddFight(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>
                         <button onClick={() => deleteFight(fight.id)} className="bg-gray-800 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Delete</button>
-                      </div>
+                      </>
+                    )}
+                    {fight.status === 'locked' && (
+                      <button onClick={() => advanceStatus(fight)} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">
+                        Mark Complete →
+                      </button>
                     )}
                   </div>
-                  {/* Stoppage betting controls */}
-                  <div className="mt-3 pt-3 border-t border-gray-800 flex flex-wrap items-center gap-3">
-                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Jackpot Bet</span>
+                </div>
+
+                {/* Jackpot controls — upcoming + locked */}
+                {fight.status !== 'complete' && (
+                  <div className="px-5 py-3 border-t border-gray-800/60 bg-gray-800/20 flex flex-wrap items-center gap-3">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Jackpot</span>
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-600">Fee $</span>
+                      <span className="text-xs text-gray-600">$</span>
                       <input
                         type="text"
                         defaultValue={fight.stoppage_bet_fee ?? '20'}
@@ -1407,21 +1427,110 @@ export default function AdminPage() {
                     </div>
                     <button
                       onClick={() => toggleStoppageBetting(fight.id, !fight.stoppage_bet_open)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                        fight.stoppage_bet_open
-                          ? 'bg-green-800 hover:bg-red-900 text-green-200'
-                          : 'bg-gray-800 hover:bg-green-900 text-gray-400 hover:text-green-300'
-                      }`}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${fight.stoppage_bet_open ? 'bg-green-800 hover:bg-red-900 text-green-200' : 'bg-gray-800 hover:bg-green-900 text-gray-400 hover:text-green-300'}`}
                     >
-                      {fight.stoppage_bet_open ? '● BETTING OPEN — click to close' : '○ Open Betting'}
+                      {fight.stoppage_bet_open ? '● OPEN — tap to close' : '○ Open Betting'}
                     </button>
-                    {fightBetCount > 0 && (
-                      <span className="text-xs text-gray-500">{fightBetCount} bet{fightBetCount !== 1 ? 's' : ''} placed</span>
+                    {fightBetCount > 0 && <span className="text-xs text-gray-500">{fightBetCount} bet{fightBetCount !== 1 ? 's' : ''}</span>}
+                  </div>
+                )}
+
+                {/* Results + Jackpot resolution — complete */}
+                {fight.status === 'complete' && form && (
+                  <div className="px-5 py-4 border-t border-gray-800 space-y-4">
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Results</p>
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Winner</label>
+                          <select value={form.winner} onChange={(e) => setResult(fight.id, 'winner', e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                            <option value="">Select winner</option>
+                            <option value={fight.fighter_a}>{fight.fighter_a}</option>
+                            <option value={fight.fighter_b}>{fight.fighter_b}</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Method</label>
+                          <select value={form.method} onChange={(e) => setResult(fight.id, 'method', e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                            <option value="">Select method</option>
+                            <option value="KO/TKO">KO/TKO</option>
+                            <option value="Submission">Submission</option>
+                            <option value="Decision">Decision</option>
+                          </select>
+                        </div>
+                        {form.method && form.method !== 'Decision' && (
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Round</label>
+                            <input type="number" min={1} max={fight.rounds} value={form.round} onChange={(e) => setResult(fight.id, 'round', e.target.value)} placeholder={`1–${fight.rounds}`} className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500" />
+                          </div>
+                        )}
+                        <button onClick={() => saveResults(fight)} disabled={savingResults[fight.id] || !form.winner || !form.method} className="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-bold transition-colors">
+                          {savingResults[fight.id] ? 'Saving…' : 'Save & Score'}
+                        </button>
+                        {saveSuccess[fight.id] && <span className="text-green-400 text-sm font-semibold">Scores calculated!</span>}
+                      </div>
+                      {fight.result_winner && (
+                        <p className="mt-2 text-sm text-gray-400">
+                          Saved: <span className="text-white font-semibold">{fight.result_winner}</span> by <span className="text-white font-semibold">{fight.result_method}</span>{fight.result_round != null && ` (Round ${fight.result_round})`}
+                        </p>
+                      )}
+                    </div>
+
+                    {stoppageBets.some((b) => b.fight_id === fight.id) && (
+                      <div className="pt-4 border-t border-gray-800">
+                        <p className="text-xs text-yellow-500 uppercase tracking-wider font-semibold mb-3">Stoppage Jackpot</p>
+                        {fight.stoppage_actual_round != null && (
+                          <p className="text-xs text-gray-500 mb-2">
+                            Resolved: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-3 items-end">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Round</label>
+                            <input type="number" min={1} max={fight.rounds} value={stopActual[fight.id]?.round ?? ''} onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], round: e.target.value } }))} placeholder="1" className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Clock (0–4)</label>
+                            <input type="number" min={0} max={4} value={stopActual[fight.id]?.minute ?? ''} onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: e.target.value } }))} placeholder="0" className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Second (0–59)</label>
+                            <input type="number" min={0} max={59} value={stopActual[fight.id]?.second ?? ''} onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))} placeholder="0" className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500" />
+                          </div>
+                          <button onClick={() => declareStoppageWinner(fight.id)} disabled={!stopActual[fight.id]?.round} className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-black disabled:text-gray-600 font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+                            Declare Winner
+                          </button>
+                        </div>
+                        {stoppageWinners[fight.id] && (
+                          <div className="mt-2">
+                            {stoppageWinners[fight.id].startsWith('No winner') ? (
+                              <div>
+                                <p className="text-sm font-semibold text-gray-500">{stoppageWinners[fight.id]}</p>
+                                <p className="text-xs text-gray-600 mt-0.5">Fight went to decision — jackpot rolls over.</p>
+                                {(() => {
+                                  const nextFight = fights.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
+                                  if (!nextFight) return <p className="text-xs text-gray-700 mt-1">No eligible next fight to roll over to.</p>
+                                  const activatedBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
+                                  const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+                                  const rolloverAmt = activatedBets.length * fee + (fight.jackpot_rollover ?? 0)
+                                  return (
+                                    <button onClick={() => rolloverJackpot(fight.id, nextFight.id)} className="mt-2 bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+                                      Roll ${rolloverAmt} → Fight {nextFight.fight_number}
+                                    </button>
+                                  )
+                                })()}
+                              </div>
+                            ) : (
+                              <p className="text-sm font-semibold text-yellow-400">Winner: {stoppageWinners[fight.id]}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
-              )
-            })()
+                )}
+              </div>
+            )
           })}
         </div>
       </section>
@@ -1508,164 +1617,6 @@ export default function AdminPage() {
           </section>
         )
       })()}
-
-      {/* ── SECTION 4: Fight Status & Scoring ─────────────────────────────── */}
-      <section className="mb-10">
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <SectionHeader>Fight Status &amp; Scoring</SectionHeader>
-          {fights.some((f) => f.status === 'upcoming') && (
-            <button
-              onClick={lockAllFights}
-              className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-5 py-2 rounded-lg text-sm transition-colors"
-            >
-              🔒 Lock All Fights
-            </button>
-          )}
-        </div>
-        <div className="space-y-4">
-          {fights.length === 0 && <div className="bg-gray-900 rounded-xl p-6 text-center text-gray-600">Add fights above to manage their status.</div>}
-          {fights.map((fight) => {
-            const form = resultForms[fight.id]
-            return (
-              <div key={fight.id} className="bg-gray-900 rounded-xl p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-gray-500 text-xs font-semibold">FIGHT {fight.fight_number}</span>
-                      <StatusBadge status={fight.status} />
-                    </div>
-                    <h3 className="text-white font-bold">{fight.fighter_a} <span className="text-gray-500">vs</span> {fight.fighter_b}</h3>
-                    <p className="text-gray-500 text-sm">{fight.rounds}R &bull; {fight.fighter_a}: {formatOdds(fight.odds_a)} &bull; {fight.fighter_b}: {formatOdds(fight.odds_b)}</p>
-                  </div>
-                  {fight.status === 'locked' && (
-                    <button onClick={() => advanceStatus(fight)} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shrink-0">
-                      Mark Complete &rarr;
-                    </button>
-                  )}
-                </div>
-
-                {fight.status === 'complete' && form && (
-                  <div className="mt-4 pt-4 border-t border-gray-800">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Enter Results</p>
-                    <div className="flex flex-wrap gap-3 items-end">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Winner</label>
-                        <select value={form.winner} onChange={(e) => setResult(fight.id, 'winner', e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                          <option value="">Select winner</option>
-                          <option value={fight.fighter_a}>{fight.fighter_a}</option>
-                          <option value={fight.fighter_b}>{fight.fighter_b}</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Method</label>
-                        <select value={form.method} onChange={(e) => setResult(fight.id, 'method', e.target.value)} className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                          <option value="">Select method</option>
-                          <option value="KO/TKO">KO/TKO</option>
-                          <option value="Submission">Submission</option>
-                          <option value="Decision">Decision</option>
-                        </select>
-                      </div>
-                      {form.method && form.method !== 'Decision' && (
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Round</label>
-                          <input type="number" min={1} max={fight.rounds} value={form.round} onChange={(e) => setResult(fight.id, 'round', e.target.value)} placeholder={`1–${fight.rounds}`} className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500" />
-                        </div>
-                      )}
-                      <button onClick={() => saveResults(fight)} disabled={savingResults[fight.id] || !form.winner || !form.method} className="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-bold transition-colors">
-                        {savingResults[fight.id] ? 'Saving…' : 'Save & Score'}
-                      </button>
-                      {saveSuccess[fight.id] && <span className="text-green-400 text-sm font-semibold">Scores calculated!</span>}
-                    </div>
-                    {fight.result_winner && (
-                      <p className="mt-3 text-sm text-gray-400">
-                        Saved: <span className="text-white font-semibold">{fight.result_winner}</span> by <span className="text-white font-semibold">{fight.result_method}</span>{fight.result_round != null && ` (Round ${fight.result_round})`}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Stoppage Jackpot resolution */}
-                {fight.status === 'complete' && stoppageBets.some((b) => b.fight_id === fight.id) && (
-                  <div className="mt-4 pt-4 border-t border-gray-800">
-                    <p className="text-xs text-yellow-500 uppercase tracking-wider font-semibold mb-3">Stoppage Jackpot</p>
-                    {fight.stoppage_actual_round != null && (
-                      <p className="text-xs text-gray-500 mb-2">
-                        Resolved: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-3 items-end">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Round</label>
-                        <input
-                          type="number" min={1} max={fight.rounds}
-                          value={stopActual[fight.id]?.round ?? ''}
-                          onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], round: e.target.value } }))}
-                          placeholder="1"
-                          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Clock (0–4)</label>
-                        <input
-                          type="number" min={0} max={4}
-                          value={stopActual[fight.id]?.minute ?? ''}
-                          onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: e.target.value } }))}
-                          placeholder="0"
-                          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Second (0–59)</label>
-                        <input
-                          type="number" min={0} max={59}
-                          value={stopActual[fight.id]?.second ?? ''}
-                          onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))}
-                          placeholder="0"
-                          className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
-                        />
-                      </div>
-                      <button
-                        onClick={() => declareStoppageWinner(fight.id)}
-                        disabled={!stopActual[fight.id]?.round}
-                        className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-black disabled:text-gray-600 font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-                      >
-                        Declare Jackpot Winner
-                      </button>
-                    </div>
-                    {stoppageWinners[fight.id] && (
-                      <div className="mt-2">
-                        {stoppageWinners[fight.id].startsWith('No winner') ? (
-                          <div>
-                            <p className="text-sm font-semibold text-gray-500">{stoppageWinners[fight.id]}</p>
-                            <p className="text-xs text-gray-600 mt-0.5">Fight went to decision — jackpot rolls over.</p>
-                            {(() => {
-                              const nextFight = fights.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
-                              if (!nextFight) return <p className="text-xs text-gray-700 mt-1">No eligible next fight to roll over to.</p>
-                              const activatedBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
-                              const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
-                              const rolloverAmt = activatedBets.length * fee + (fight.jackpot_rollover ?? 0)
-                              return (
-                                <button
-                                  onClick={() => rolloverJackpot(fight.id, nextFight.id)}
-                                  className="mt-2 bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-                                >
-                                  Roll ${rolloverAmt} → Fight {nextFight.fight_number}
-                                </button>
-                              )
-                            })()}
-                          </div>
-                        ) : (
-                          <p className="text-sm font-semibold text-yellow-400">Jackpot winner: {stoppageWinners[fight.id]}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </section>
 
       {/* ── SECTION 5: Payouts ────────────────────────────────────────────── */}
       {(() => {

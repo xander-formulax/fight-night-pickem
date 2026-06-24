@@ -142,7 +142,9 @@ export default function PlayPage() {
   useEffect(() => {
     loadData()
     const interval = setInterval(() => loadData(), 15000)
-    return () => clearInterval(interval)
+    const onVisible = () => { if (document.visibilityState === 'visible') loadData() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [loadData])
 
   function updatePick(fightId: string, field: keyof PickState, value: string) {

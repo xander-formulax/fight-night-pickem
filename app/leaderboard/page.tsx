@@ -242,7 +242,9 @@ export default function LeaderboardPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scores' }, () => loadData())
       .subscribe()
     const interval = setInterval(() => loadData(), 15000)
-    return () => { supabase.removeChannel(channel); clearInterval(interval) }
+    const onVisible = () => { if (document.visibilityState === 'visible') loadData() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { supabase.removeChannel(channel); clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [loadData])
 
   const activeComp = competitions.find((c) => c.id === activeCompId)
