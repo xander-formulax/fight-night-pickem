@@ -15,7 +15,7 @@ function Toggle({ checked, onChange, color }: { checked: boolean; onChange: () =
       onClick={onChange}
       className={`relative w-11 h-6 rounded-full transition-colors ${checked ? (color === 'green' ? 'bg-green-500' : 'bg-blue-500') : 'bg-gray-700'}`}
     >
-      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
     </button>
   )
 }
@@ -515,9 +515,12 @@ export default function AdminPage() {
 
   // ── players ───────────────────────────────────────────────────────────────
 
-  async function togglePlayer(id: string, field: 'paid' | 'activated', value: boolean) {
-    setPlayers((prev) => prev.map((p) => p.id === id ? { ...p, [field]: value } : p))
-    await fetch('/api/update-player', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: id, field, value }) })
+  async function activatePlayer(id: string, value: boolean) {
+    setPlayers((prev) => prev.map((p) => p.id === id ? { ...p, paid: value, activated: value } : p))
+    await Promise.all([
+      fetch('/api/update-player', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: id, field: 'paid', value }) }),
+      fetch('/api/update-player', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: id, field: 'activated', value }) }),
+    ])
   }
 
   // ── results ───────────────────────────────────────────────────────────────
@@ -991,14 +994,14 @@ export default function AdminPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-gray-800">
-                {['Name', 'Pool', 'Signed Up', 'Paid', 'Activated'].map((h) => (
+                {['Name', 'Pool', 'Signed Up', 'Activate'].map((h) => (
                   <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {players.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-600">No players yet</td></tr>
+                <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-600">No players yet</td></tr>
               ) : (
                 players.map((player) => {
                   const comp = competitions.find((c) => c.id === player.competition_id)
@@ -1011,8 +1014,7 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{new Date(player.created_at).toLocaleString()}</td>
-                      <td className="px-4 py-3"><Toggle checked={player.paid} onChange={() => togglePlayer(player.id, 'paid', !player.paid)} color="green" /></td>
-                      <td className="px-4 py-3"><Toggle checked={player.activated} onChange={() => togglePlayer(player.id, 'activated', !player.activated)} color="blue" /></td>
+                      <td className="px-4 py-3"><Toggle checked={player.activated} onChange={() => activatePlayer(player.id, !player.activated)} color="green" /></td>
                     </tr>
                   )
                 })

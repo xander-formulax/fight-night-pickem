@@ -151,6 +151,35 @@ function PlayerModal({
   )
 }
 
+function parseFee(fee: string) { return parseFloat(fee.replace(/[^0-9.]/g, '')) || 0 }
+function ordinal(n: number) {
+  if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd'; return `${n}th`
+}
+
+function calcPrizePool(
+  comp: Competition,
+  allComps: Competition[],
+  allPlayers: Player[],
+  partyCostTarget: number
+) {
+  let totalExpenseContrib = 0
+  allComps.forEach((c) => {
+    const paid = allPlayers.filter((p) => p.competition_id === c.id && p.paid).length
+    totalExpenseContrib += paid * parseFee(c.entry_fee) * ((c.expense_cut_pct ?? 50) / 100)
+  })
+  const surplus = partyCostTarget > 0 ? Math.max(0, totalExpenseContrib - partyCostTarget) : 0
+  const paidCount = allPlayers.filter((p) => p.competition_id === comp.id && p.paid).length
+  const fee = parseFee(comp.entry_fee)
+  const poolExpenseContrib = paidCount * fee * ((comp.expense_cut_pct ?? 50) / 100)
+  const poolSurplus = totalExpenseContrib > 0 ? (poolExpenseContrib / totalExpenseContrib) * surplus : 0
+  const prizePool = paidCount * fee * (1 - (comp.expense_cut_pct ?? 50) / 100) + poolSurplus
+  return {
+    paidCount,
+    prizePool,
+    places: (comp.prize_splits ?? []).map((s) => ({ place: s.place, pct: s.pct, amount: prizePool * s.pct / 100 })),
+  }
+}
+
 export default function LeaderboardPage() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [activeCompId, setActiveCompId] = useState<string>('')
@@ -158,6 +187,7 @@ export default function LeaderboardPage() {
   const [allPlayers, setAllPlayers] = useState<Player[]>([])
   const [allScores, setAllScores] = useState<Score[]>([])
   const [allPicks, setAllPicks] = useState<Pick[]>([])
+  const [partyCostTarget, setPartyCostTarget] = useState(0)
   const [lastUpdate, setLastUpdate] = useState('')
   const [expandedEntry, setExpandedEntry] = useState<PlayerWithScores | null>(null)
 
@@ -179,13 +209,14 @@ export default function LeaderboardPage() {
 
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }, { data: picksData }] =
+    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }, { data: picksData }, settingsRes] =
       await Promise.all([
         supabase.from('competitions').select('*').order('created_at'),
         supabase.from('fights').select('*').order('fight_number'),
         supabase.from('players').select('*'),
         supabase.from('scores').select('*'),
         supabase.from('picks').select('*'),
+        fetch('/api/event-settings'),
       ])
 
     if (compsData) {
@@ -196,6 +227,10 @@ export default function LeaderboardPage() {
     if (playersData) setAllPlayers(playersData)
     if (scoresData) setAllScores(scoresData)
     if (picksData) setAllPicks(picksData)
+    if (settingsRes.ok) {
+      const s = await settingsRes.json()
+      setPartyCostTarget(parseFloat(s.party_cost_target) || 0)
+    }
     setLastUpdate(new Date().toLocaleTimeString())
   }, [])
 
@@ -250,10 +285,39 @@ export default function LeaderboardPage() {
       )}
 
       {competitions.length === 1 && activeComp && (
-        <p className="text-center text-gray-500 text-sm mb-6">
+        <p className="text-center text-gray-500 text-sm mb-4">
           {activeComp.name} &bull; {activeComp.entry_fee}
         </p>
       )}
+
+      {/* Prize display */}
+      {activeComp && (() => {
+        const { paidCount, prizePool, places } = calcPrizePool(activeComp, competitions, allPlayers, partyCostTarget)
+        if (paidCount === 0 || places.length === 0) return null
+        return (
+          <div className="text-center mb-6">
+            <p className="text-gray-600 text-xs uppercase tracking-widest mb-3">Current Prizes</p>
+            <div className="flex justify-center gap-6 md:gap-10 flex-wrap">
+              {places.map((p) => (
+                <div key={p.place}>
+                  <div className={`font-black tabular-nums ${
+                    p.place === 1 ? 'text-4xl md:text-5xl text-yellow-400' :
+                    p.place === 2 ? 'text-3xl md:text-4xl text-gray-300' :
+                    p.place === 3 ? 'text-2xl md:text-3xl text-amber-600' :
+                    'text-2xl text-green-400'
+                  }`}>
+                    ${p.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-gray-600 text-xs mt-1 uppercase tracking-wider">{ordinal(p.place)}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-gray-700 text-xs mt-3">
+              {paidCount} paid · ${prizePool.toLocaleString(undefined, { maximumFractionDigits: 0 })} prize pool
+            </p>
+          </div>
+        )
+      })()}
 
       {/* Fight status pills */}
       {fights.length > 0 && (
