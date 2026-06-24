@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
-import type { Competition, Fight, Player, PrizeSplit } from '@/lib/types'
+import type { Competition, Fight, Player, PrizeSplit, StoppageBet } from '@/lib/types'
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
 // ─── shared primitives ─────────────────────────────────────────────────────
@@ -643,6 +643,11 @@ export default function AdminPage() {
   const [savingResults, setSavingResults] = useState<Record<string, boolean>>({})
   const [saveSuccess, setSaveSuccess] = useState<Record<string, boolean>>({})
 
+  // stoppage jackpot
+  const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
+  const [stopMinuteInputs, setStopMinuteInputs] = useState<Record<string, string>>({})
+  const [stoppageWinners, setStoppageWinners] = useState<Record<string, string>>({})
+
   // reset
   const [resetting, setResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -650,14 +655,16 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     setDataLoading(true)
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: playersData }, { data: fightsData }, settingsRes] = await Promise.all([
+    const [{ data: compsData }, { data: playersData }, { data: fightsData }, { data: stoppageBetsData }, settingsRes] = await Promise.all([
       supabase.from('competitions').select('*').order('created_at'),
       supabase.from('players').select('*').order('created_at'),
       supabase.from('fights').select('*').order('fight_number'),
+      supabase.from('stoppage_bets').select('*').order('created_at'),
       fetch('/api/event-settings'),
     ])
     if (compsData) setCompetitions(compsData)
     if (playersData) setPlayers(playersData)
+    if (stoppageBetsData) setStoppageBets(stoppageBetsData)
     if (fightsData) {
       setFights(fightsData)
       setResultForms((prev) => {
@@ -773,6 +780,55 @@ export default function AdminPage() {
       fetch('/api/update-player', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: id, field: 'paid', value }) }),
       fetch('/api/update-player', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: id, field: 'activated', value }) }),
     ])
+  }
+
+  // ── stoppage jackpot ─────────────────────────────────────────────────────
+
+  async function toggleStoppageBetting(fightId: string, open: boolean) {
+    setFights((prev) => prev.map((f) => f.id === fightId ? { ...f, stoppage_bet_open: open } : f))
+    await fetch('/api/update-fight-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fight_id: fightId, stoppage_bet_open: open }),
+    })
+  }
+
+  async function saveFightBetFee(fightId: string, fee: string) {
+    setFights((prev) => prev.map((f) => f.id === fightId ? { ...f, stoppage_bet_fee: fee } : f))
+    await fetch('/api/update-fight-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fight_id: fightId, stoppage_bet_fee: fee }),
+    })
+  }
+
+  async function activateStoppageBet(betId: string, value: boolean) {
+    setStoppageBets((prev) => prev.map((b) => b.id === betId ? { ...b, paid: value, activated: value } : b))
+    await fetch('/api/activate-stoppage-bet', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bet_id: betId, value }),
+    })
+  }
+
+  async function declareStoppageWinner(fightId: string) {
+    const minuteStr = stopMinuteInputs[fightId]
+    const minute = parseInt(minuteStr ?? '', 10)
+    if (!minute) return
+    const res = await fetch('/api/resolve-stoppage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fight_id: fightId, actual_minute: minute }),
+    })
+    const result = await res.json()
+    if (result.winner) {
+      const playerName = players.find((p) => p.id === result.winner.player_id)?.name ?? 'Unknown'
+      setStoppageWinners((prev) => ({
+        ...prev,
+        [fightId]: `${playerName} picked minute ${result.winner.minute}`,
+      }))
+    } else {
+      setStoppageWinners((prev) => ({
+        ...prev,
+        [fightId]: `No winner — no activated bets at or below minute ${minute}`,
+      }))
+    }
   }
 
   // ── results ───────────────────────────────────────────────────────────────
@@ -1231,28 +1287,59 @@ export default function AdminPage() {
                 </div>
               )
             }
-            return (
-              <div key={fight.id} className="bg-gray-900 rounded-xl p-5 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-gray-500 text-xs font-semibold">FIGHT {fight.fight_number}</span>
-                    <StatusBadge status={fight.status} />
-                    <span className="text-gray-600 text-xs">{fight.rounds}R</span>
+            return (() => {
+              const fightBetCount = stoppageBets.filter((b) => b.fight_id === fight.id).length
+              return (
+                <div key={fight.id} className="bg-gray-900 rounded-xl p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-gray-500 text-xs font-semibold">FIGHT {fight.fight_number}</span>
+                        <StatusBadge status={fight.status} />
+                        <span className="text-gray-600 text-xs">{fight.rounds}R</span>
+                      </div>
+                      <div className="text-white font-bold">
+                        {fight.fighter_a} <span className={`text-sm font-bold ${fight.odds_a > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_a)})</span>
+                        <span className="text-gray-600 mx-2">vs</span>
+                        {fight.fighter_b} <span className={`text-sm font-bold ${fight.odds_b > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_b)})</span>
+                      </div>
+                    </div>
+                    {fight.status === 'upcoming' && (
+                      <div className="flex gap-2">
+                        <button onClick={() => { setEditingFightId(fight.id); setShowAddFight(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>
+                        <button onClick={() => deleteFight(fight.id)} className="bg-gray-800 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Delete</button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-white font-bold">
-                    {fight.fighter_a} <span className={`text-sm font-bold ${fight.odds_a > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_a)})</span>
-                    <span className="text-gray-600 mx-2">vs</span>
-                    {fight.fighter_b} <span className={`text-sm font-bold ${fight.odds_b > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_b)})</span>
+                  {/* Stoppage betting controls */}
+                  <div className="mt-3 pt-3 border-t border-gray-800 flex flex-wrap items-center gap-3">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Jackpot Bet</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-600">Fee $</span>
+                      <input
+                        type="text"
+                        defaultValue={fight.stoppage_bet_fee ?? '20'}
+                        onBlur={(e) => saveFightBetFee(fight.id, e.target.value)}
+                        className="w-14 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-yellow-600"
+                      />
+                    </div>
+                    <button
+                      onClick={() => toggleStoppageBetting(fight.id, !fight.stoppage_bet_open)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                        fight.stoppage_bet_open
+                          ? 'bg-green-800 hover:bg-red-900 text-green-200'
+                          : 'bg-gray-800 hover:bg-green-900 text-gray-400 hover:text-green-300'
+                      }`}
+                    >
+                      {fight.stoppage_bet_open ? '● BETTING OPEN — click to close' : '○ Open Betting'}
+                    </button>
+                    {fightBetCount > 0 && (
+                      <span className="text-xs text-gray-500">{fightBetCount} bet{fightBetCount !== 1 ? 's' : ''} placed</span>
+                    )}
                   </div>
                 </div>
-                {fight.status === 'upcoming' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => { setEditingFightId(fight.id); setShowAddFight(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>
-                    <button onClick={() => deleteFight(fight.id)} className="bg-gray-800 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Delete</button>
-                  </div>
-                )}
-              </div>
-            )
+              )
+            })()
           })}
         </div>
       </section>
@@ -1293,6 +1380,73 @@ export default function AdminPage() {
           </table>
         </div>
       </section>
+
+      {/* ── SECTION 3.5: Stoppage Bet Management ─────────────────────────── */}
+      {stoppageBets.length > 0 && (
+        <section className="mb-10">
+          <SectionHeader>Stoppage Bet Management</SectionHeader>
+          <div className="space-y-4">
+            {fights
+              .filter((f) => stoppageBets.some((b) => b.fight_id === f.id))
+              .map((fight) => {
+                const fightBets = stoppageBets
+                  .filter((b) => b.fight_id === fight.id)
+                  .sort((a, b) => a.minute - b.minute)
+                return (
+                  <div key={fight.id} className="bg-gray-900 rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-800 flex flex-wrap items-center gap-3">
+                      <span className="text-white font-bold">
+                        {fight.fighter_a} vs {fight.fighter_b}
+                      </span>
+                      <span className="text-gray-500 text-sm">Fight {fight.fight_number}</span>
+                      {fight.stoppage_bet_open && (
+                        <span className="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full font-semibold">
+                          BETTING OPEN
+                        </span>
+                      )}
+                      <span className="text-gray-600 text-xs ml-auto">
+                        {fightBets.filter((b) => b.activated).length}/{fightBets.length} activated
+                      </span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          {['Player', 'Minute', 'Status', 'Activate'].map((h) => (
+                            <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-2 font-semibold">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fightBets.map((bet) => {
+                          const playerName = players.find((p) => p.id === bet.player_id)?.name ?? 'Unknown'
+                          return (
+                            <tr key={bet.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                              <td className="px-4 py-2.5 text-white font-medium">{playerName}</td>
+                              <td className="px-4 py-2.5">
+                                <span className="bg-yellow-900/40 text-yellow-300 font-black px-2 py-0.5 rounded text-sm">
+                                  Min {bet.minute}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5">
+                                {bet.activated
+                                  ? <span className="text-xs font-semibold text-green-400">Activated</span>
+                                  : <span className="text-xs font-semibold text-orange-400">Pending Payment</span>
+                                }
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <Toggle checked={bet.activated} onChange={() => activateStoppageBet(bet.id, !bet.activated)} color="green" />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
+          </div>
+        </section>
+      )}
 
       {/* ── SECTION 4: Fight Status & Scoring ─────────────────────────────── */}
       <section className="mb-10">
@@ -1355,6 +1509,44 @@ export default function AdminPage() {
                       <p className="mt-3 text-sm text-gray-400">
                         Saved: <span className="text-white font-semibold">{fight.result_winner}</span> by <span className="text-white font-semibold">{fight.result_method}</span>{fight.result_round != null && ` (Round ${fight.result_round})`}
                       </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Stoppage Jackpot resolution */}
+                {fight.status === 'complete' && stoppageBets.some((b) => b.fight_id === fight.id) && (
+                  <div className="mt-4 pt-4 border-t border-gray-800">
+                    <p className="text-xs text-yellow-500 uppercase tracking-wider font-semibold mb-3">Stoppage Jackpot</p>
+                    {fight.stoppage_actual_minute != null && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        Resolved at minute {fight.stoppage_actual_minute}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-3 items-end">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Actual Stoppage Minute</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={fight.rounds * 5}
+                          value={stopMinuteInputs[fight.id] ?? (fight.stoppage_actual_minute != null ? String(fight.stoppage_actual_minute) : '')}
+                          onChange={(e) => setStopMinuteInputs((prev) => ({ ...prev, [fight.id]: e.target.value }))}
+                          placeholder={`1–${fight.rounds * 5}`}
+                          className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
+                        />
+                      </div>
+                      <button
+                        onClick={() => declareStoppageWinner(fight.id)}
+                        disabled={!stopMinuteInputs[fight.id]}
+                        className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-black disabled:text-gray-600 font-bold px-4 py-2 rounded-lg text-sm transition-colors"
+                      >
+                        Declare Jackpot Winner
+                      </button>
+                    </div>
+                    {stoppageWinners[fight.id] && (
+                      <div className={`mt-2 text-sm font-semibold ${stoppageWinners[fight.id].startsWith('No winner') ? 'text-gray-500' : 'text-yellow-400'}`}>
+                        {stoppageWinners[fight.id].startsWith('No winner') ? stoppageWinners[fight.id] : `Jackpot winner: ${stoppageWinners[fight.id]}`}
+                      </div>
                     )}
                   </div>
                 )}

@@ -25,6 +25,19 @@ export interface Fight {
   result_winner?: string | null
   result_method?: 'KO/TKO' | 'Submission' | 'Decision' | null
   result_round?: number | null
+  stoppage_bet_open?: boolean
+  stoppage_bet_fee?: string | null
+  stoppage_actual_minute?: number | null
+  created_at: string
+}
+
+export interface StoppageBet {
+  id: string
+  fight_id: string
+  player_id: string
+  minute: number
+  paid: boolean
+  activated: boolean
   created_at: string
 }
 

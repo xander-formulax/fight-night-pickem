@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
-import type { Competition, Fight, Player, Pick } from '@/lib/types'
+import type { Competition, Fight, Player, Pick, StoppageBet } from '@/lib/types'
 
 type Method = 'KO/TKO' | 'Submission' | 'Decision'
 
@@ -57,6 +57,10 @@ export default function PlayPage() {
   const [picks, setPicks] = useState<Record<string, PickState>>({})
   const [error, setError] = useState('')
 
+  const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
+  const [stoppageBetError, setStoppageBetError] = useState<Record<string, string>>({})
+  const [stoppageBetPlacing, setStoppageBetPlacing] = useState(false)
+
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
 
@@ -96,7 +100,35 @@ export default function PlayPage() {
       }
     }
 
+    // Load stoppage bets for all open fights
+    const openFightIds = (fightsData ?? []).filter((f) => f.stoppage_bet_open).map((f) => f.id)
+    if (openFightIds.length > 0) {
+      const { data: betsData } = await supabase
+        .from('stoppage_bets').select('*').in('fight_id', openFightIds)
+      if (betsData) setStoppageBets(betsData)
+    }
+
     setLoading(false)
+  }, [])
+
+  // Real-time updates so taken minutes refresh instantly for all players
+  useEffect(() => {
+    const supabase = getSupabaseBrowser()
+    const channel = supabase
+      .channel('stoppage-bets-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stoppage_bets' }, (payload) => {
+        setStoppageBets((prev) => {
+          if (prev.find((b) => b.id === (payload.new as StoppageBet).id)) return prev
+          return [...prev, payload.new as StoppageBet]
+        })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stoppage_bets' }, (payload) => {
+        setStoppageBets((prev) =>
+          prev.map((b) => (b.id === (payload.new as StoppageBet).id ? (payload.new as StoppageBet) : b))
+        )
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
@@ -110,6 +142,29 @@ export default function PlayPage() {
         ...(field === 'method_pick' && value === 'Decision' ? { round_pick: '' } : {}),
       },
     }))
+  }
+
+  async function placeStoppageBet(fightId: string, minute: number) {
+    if (!existingPlayer) return
+    setStoppageBetPlacing(true)
+    setStoppageBetError((prev) => ({ ...prev, [fightId]: '' }))
+    const res = await fetch('/api/stoppage-bet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fight_id: fightId, player_id: existingPlayer.id, minute }),
+    })
+    const result = await res.json()
+    if (!res.ok) {
+      setStoppageBetError((prev) => ({ ...prev, [fightId]: result.error ?? 'Failed to place bet' }))
+    } else {
+      setStoppageBets((prev) => {
+        const filtered = prev.filter(
+          (b) => !(b.fight_id === fightId && b.player_id === existingPlayer.id)
+        )
+        return [...filtered, result.bet]
+      })
+    }
+    setStoppageBetPlacing(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -230,6 +285,104 @@ export default function PlayPage() {
             </div>
           </dl>
         </div>
+
+        {/* ── Stoppage Time Jackpot ────────────────────────────────────── */}
+        {(() => {
+          const jackpotFights = fights.filter((f) => f.stoppage_bet_open && f.status !== 'complete')
+          if (jackpotFights.length === 0) return null
+          return (
+            <div className="mb-6">
+              <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
+              <p className="text-gray-500 text-sm mb-4">
+                Pick the exact minute a fight is stopped. Closest pick without going over wins the whole jackpot!
+                Each minute can only be claimed once.
+              </p>
+              <div className="space-y-4">
+                {jackpotFights.map((fight) => {
+                  const allBetsForFight = stoppageBets.filter((b) => b.fight_id === fight.id)
+                  const takenMinutes = allBetsForFight.map((b) => b.minute)
+                  const myBet = allBetsForFight.find((b) => b.player_id === existingPlayer.id)
+                  const maxMinute = (fight.rounds ?? 3) * 5
+                  const fee = fight.stoppage_bet_fee ?? '20'
+                  return (
+                    <div key={fight.id} className="bg-gray-900 rounded-xl p-5 border border-yellow-900/40">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-0.5">
+                            Fight {fight.fight_number} — Jackpot
+                          </p>
+                          <p className="text-white font-bold">
+                            {fight.fighter_a} vs {fight.fighter_b}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-yellow-400 font-black text-xl">${fee}</p>
+                          <p className="text-xs text-gray-500">entry fee</p>
+                        </div>
+                      </div>
+
+                      {myBet && (
+                        <div className="mb-3 bg-yellow-900/25 border border-yellow-700/50 rounded-lg px-4 py-2 flex items-center justify-between">
+                          <span className="text-yellow-300 font-semibold text-sm">
+                            Your pick: Minute {myBet.minute}
+                          </span>
+                          <span
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              myBet.activated
+                                ? 'bg-green-900 text-green-300'
+                                : 'bg-orange-900/60 text-orange-300'
+                            }`}
+                          >
+                            {myBet.activated ? 'Confirmed' : 'Awaiting Payment'}
+                          </span>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-gray-500 mb-2">
+                        Select a minute (1–{maxMinute}) — {takenMinutes.length}/{maxMinute} claimed:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Array.from({ length: maxMinute }, (_, i) => i + 1).map((min) => {
+                          const isMyPick = myBet?.minute === min
+                          const takenByOther =
+                            takenMinutes.includes(min) && !isMyPick
+                          return (
+                            <button
+                              key={min}
+                              onClick={() =>
+                                !takenByOther && !stoppageBetPlacing && !isMyPick &&
+                                placeStoppageBet(fight.id, min)
+                              }
+                              disabled={takenByOther || stoppageBetPlacing}
+                              className={`w-9 h-9 rounded-lg text-sm font-bold transition-all ${
+                                isMyPick
+                                  ? 'bg-yellow-500 text-black ring-2 ring-yellow-300'
+                                  : takenByOther
+                                  ? 'bg-gray-800 text-gray-700 cursor-not-allowed'
+                                  : 'bg-gray-800 text-gray-300 hover:bg-yellow-900/50 hover:text-yellow-300 cursor-pointer'
+                              }`}
+                            >
+                              {min}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {!myBet && (
+                        <p className="text-xs text-gray-600 mt-2 italic">
+                          Contact the organizer to pay ${fee} after selecting your minute.
+                        </p>
+                      )}
+                      {stoppageBetError[fight.id] && (
+                        <p className="text-red-400 text-xs mt-2">{stoppageBetError[fight.id]}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         <h3 className="text-lg font-bold text-white mb-3">Your Picks</h3>
         <div className="space-y-3">
