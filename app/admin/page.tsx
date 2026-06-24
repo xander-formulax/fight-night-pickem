@@ -328,6 +328,255 @@ function FightForm({ initial, onSave, onCancel, saving, error }: {
   )
 }
 
+// ─── simulation ─────────────────────────────────────────────────────────────
+
+type SimMethod = 'KO/TKO' | 'Submission' | 'Decision'
+interface SimPlayer {
+  id: string; name: string; competition_id: string
+  picks: Record<string, { winner_pick: string; method_pick: SimMethod; round_pick: number | null }>
+}
+interface SimResult { fight_id: string; fight_number: number; winner: string; method: SimMethod; round: number | null }
+
+const SIM_NAMES = [
+  'Alex Johnson','Sam Williams','Jordan Smith','Casey Brown','Morgan Davis',
+  'Riley Wilson','Blake Martinez','Taylor Anderson','Drew Thompson','Quinn Garcia',
+  'Harper Lee','Logan Moore','Avery Jackson','Parker White','Reese Harris',
+  'Charlie Clark','Jamie Lewis','Skylar Walker','Finley Hall','Peyton Allen',
+  'Rowan Young','Sage King','River Scott','Phoenix Green','Dakota Baker',
+  'Frankie Torres','Jesse Reed','Kendall Cook','Lennox Phillips','Marley Evans',
+  'Sasha Bell','Nico Cruz','Remy Stone','Avery Flores','Carmen Vega',
+  'Dani Reyes','Eli Shaw','Fiona Brooks','Gus Ortega','Hana Patel',
+]
+const SIM_METHODS: SimMethod[] = ['KO/TKO','KO/TKO','KO/TKO','Submission','Submission','Decision','Decision','Decision','Decision','Decision']
+function simRand<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
+function simRandInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min }
+function simWins(oddsA: number, _oddsB: number): boolean {
+  const probA = oddsA > 0 ? 100 / (oddsA + 100) : Math.abs(oddsA) / (Math.abs(oddsA) + 100)
+  return Math.random() < probA
+}
+function simCalcTotal(player: SimPlayer, results: SimResult[], fights: Fight[]): number {
+  return results.reduce((sum, res) => {
+    const pick = player.picks[res.fight_id]
+    const fight = fights.find(f => f.id === res.fight_id)
+    if (!pick || !fight) return sum
+    if (pick.winner_pick !== res.winner) return sum
+    const odds = pick.winner_pick === fight.fighter_a ? fight.odds_a : fight.odds_b
+    let pts = odds > 0 ? odds : odds < 0 ? Math.round((100 / Math.abs(odds)) * 100) : 100
+    if (pick.method_pick === res.method) {
+      pts += res.method === 'KO/TKO' ? 100 : res.method === 'Submission' ? 150 : 50
+      if (res.method !== 'Decision' && pick.round_pick === res.round) pts += 100
+    }
+    return sum + pts
+  }, 0)
+}
+
+function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
+  competitions: Competition[]; fights: Fight[]; partyCostTarget: number; onExit: () => void
+}) {
+  const [counts, setCounts] = useState<Record<string, string>>({})
+  const [players, setPlayers] = useState<SimPlayer[]>([])
+  const [results, setResults] = useState<SimResult[]>([])
+  const [simRan, setSimRan] = useState(false)
+
+  function generatePlayers() {
+    const pool = [...SIM_NAMES].sort(() => Math.random() - 0.5)
+    let nameIdx = 0
+    const newPlayers: SimPlayer[] = []
+    competitions.forEach(comp => {
+      const n = Math.max(0, Math.min(200, parseInt(counts[comp.id] || '0', 10)))
+      for (let i = 0; i < n; i++) {
+        const name = nameIdx < pool.length ? pool[nameIdx++] : `Player ${nameIdx++ + 1}`
+        const picks: SimPlayer['picks'] = {}
+        fights.forEach(fight => {
+          const aWins = simWins(fight.odds_a, fight.odds_b)
+          const winner = aWins ? fight.fighter_a : fight.fighter_b
+          const method = simRand(SIM_METHODS)
+          picks[fight.id] = { winner_pick: winner, method_pick: method, round_pick: method !== 'Decision' ? simRandInt(1, fight.rounds) : null }
+        })
+        newPlayers.push({ id: `sim-${comp.id}-${i}`, name, competition_id: comp.id, picks })
+      }
+    })
+    setPlayers(newPlayers)
+    setResults([])
+    setSimRan(false)
+  }
+
+  function runSim() {
+    const newResults: SimResult[] = fights.map(fight => {
+      const aWins = simWins(fight.odds_a, fight.odds_b)
+      const winner = aWins ? fight.fighter_a : fight.fighter_b
+      const method = simRand(SIM_METHODS)
+      return { fight_id: fight.id, fight_number: fight.fight_number, winner, method, round: method !== 'Decision' ? simRandInt(1, fight.rounds) : null }
+    })
+    setResults(newResults)
+    setSimRan(true)
+  }
+
+  const totalCount = Object.values(counts).reduce((s, v) => s + (parseInt(v) || 0), 0)
+
+  return (
+    <div className="mb-10 rounded-2xl border-2 border-yellow-600/60 overflow-hidden">
+      {/* Panel header */}
+      <div className="flex items-center justify-between px-6 py-4 bg-yellow-950/60 border-b border-yellow-700/40">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-400" /></span>
+          <span className="text-yellow-300 font-black text-lg tracking-wider">SIMULATION MODE</span>
+          <span className="text-yellow-800 text-xs hidden sm:inline">no real data is affected</span>
+        </div>
+        <button onClick={onExit} className="border border-yellow-700 text-yellow-400 hover:bg-yellow-900/60 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">Exit</button>
+      </div>
+
+      <div className="p-6 space-y-8 bg-yellow-950/10">
+        {fights.length === 0 && (
+          <p className="text-yellow-600 text-sm">Add fights in Fight Card Setup first — simulation needs fights to work with.</p>
+        )}
+
+        {/* Step 1 */}
+        {fights.length > 0 && (
+          <div>
+            <p className="text-xs text-yellow-700 font-bold uppercase tracking-widest mb-3">Step 1 — How many entries per pool?</p>
+            <div className="flex flex-wrap gap-4 mb-4">
+              {competitions.map(comp => (
+                <div key={comp.id} className="bg-gray-900 rounded-xl px-4 py-3 border border-gray-800 flex items-center gap-3">
+                  <div>
+                    <div className="text-white font-bold text-sm">{comp.name}</div>
+                    <div className="text-red-400 text-xs font-black">{comp.entry_fee}</div>
+                  </div>
+                  <input
+                    type="number" min={0} max={200}
+                    value={counts[comp.id] || ''}
+                    onChange={e => setCounts(p => ({ ...p, [comp.id]: e.target.value }))}
+                    placeholder="0"
+                    className="w-20 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-yellow-500"
+                  />
+                  <span className="text-gray-500 text-xs">entries</span>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={generatePlayers}
+              disabled={totalCount === 0}
+              className="bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-black font-black px-6 py-2.5 rounded-xl text-sm transition-colors"
+            >
+              Generate {totalCount > 0 ? `${totalCount} Random Entries` : 'Entries'}
+            </button>
+            {players.length > 0 && (
+              <span className="ml-3 text-yellow-600 text-sm font-semibold">{players.length} entries ready</span>
+            )}
+          </div>
+        )}
+
+        {/* Step 2 */}
+        {players.length > 0 && (
+          <div>
+            <p className="text-xs text-yellow-700 font-bold uppercase tracking-widest mb-3">Step 2 — Simulate the fights</p>
+            <button
+              onClick={runSim}
+              className="bg-red-600 hover:bg-red-500 text-white font-black px-6 py-2.5 rounded-xl text-sm transition-colors"
+            >
+              {simRan ? 'Re-run Simulation' : 'Run Fight Simulation'}
+            </button>
+            {simRan && <span className="ml-3 text-gray-600 text-xs">Each run picks new random outcomes weighted by odds</span>}
+          </div>
+        )}
+
+        {/* Results */}
+        {simRan && results.length > 0 && (() => {
+          // Compute cross-pool expense recovery
+          let totalExpContrib = 0
+          competitions.forEach(c => {
+            const cnt = players.filter(p => p.competition_id === c.id).length
+            totalExpContrib += cnt * parseFee(c.entry_fee) * ((c.expense_cut_pct ?? 50) / 100)
+          })
+          const surplus = partyCostTarget > 0 ? Math.max(0, totalExpContrib - partyCostTarget) : 0
+
+          return (
+            <div className="space-y-6">
+              {/* Fight outcomes */}
+              <div>
+                <p className="text-xs text-yellow-700 font-bold uppercase tracking-widest mb-3">Simulated Outcomes</p>
+                <div className="flex flex-wrap gap-2">
+                  {results.map(res => (
+                    <div key={res.fight_id} className="bg-gray-900 rounded-xl px-3 py-2 border border-gray-800 text-xs">
+                      <span className="text-gray-600 mr-1.5">F{res.fight_number}</span>
+                      <span className="text-white font-bold">{res.winner}</span>
+                      <span className="text-orange-400 ml-1.5">{res.method}{res.round != null ? ` R${res.round}` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Leaderboard per competition */}
+              {competitions.map(comp => {
+                const compPlayers = players.filter(p => p.competition_id === comp.id)
+                if (compPlayers.length === 0) return null
+                const board = compPlayers
+                  .map(p => ({ player: p, total: simCalcTotal(p, results, fights) }))
+                  .sort((a, b) => b.total - a.total)
+
+                const fee = parseFee(comp.entry_fee)
+                const expCut = (comp.expense_cut_pct ?? 50) / 100
+                const thisExpContrib = compPlayers.length * fee * expCut
+                const thisSurplus = totalExpContrib > 0 ? (thisExpContrib / totalExpContrib) * surplus : 0
+                const prizePool = compPlayers.length * fee * (1 - expCut) + thisSurplus
+                const splits = comp.prize_splits ?? []
+
+                return (
+                  <div key={comp.id}>
+                    <div className="flex flex-wrap items-baseline gap-3 mb-2">
+                      <p className="text-xs text-yellow-700 font-bold uppercase tracking-widest">{comp.name} Results</p>
+                      <span className="text-gray-600 text-xs">{compPlayers.length} players · <span className="text-green-500 font-semibold">${prizePool.toFixed(0)} prize pool</span></span>
+                      {partyCostTarget > 0 && <span className="text-orange-600 text-xs">${Math.min(thisExpContrib, partyCostTarget).toFixed(0)} to expenses</span>}
+                    </div>
+                    <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {board.map(({ player, total }, idx) => {
+                            const rank = idx + 1
+                            const split = splits.find(s => s.place === rank)
+                            const payout = split ? prizePool * split.pct / 100 : null
+                            return (
+                              <tr key={player.id} className={`border-b border-gray-800/40 ${rank === 1 ? 'bg-yellow-900/15' : rank <= 3 ? 'bg-gray-800/20' : ''}`}>
+                                <td className="px-3 py-2.5 text-gray-600 w-8 font-bold text-xs">{rank}</td>
+                                <td className="px-2 py-2.5 text-white font-semibold">{player.name}</td>
+                                <td className="px-2 py-2.5 text-right font-black text-green-400">{total} pts</td>
+                                <td className="px-3 py-2.5 text-right w-20">
+                                  {payout != null ? (
+                                    <span className={`font-black ${rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-gray-300' : rank === 3 ? 'text-amber-600' : 'text-green-500'}`}>
+                                      ${payout.toFixed(0)}
+                                    </span>
+                                  ) : <span className="text-gray-700">—</span>}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      {splits.length > 0 && (
+                        <div className="px-4 py-2.5 border-t border-gray-800 flex flex-wrap gap-4">
+                          {splits.map(s => (
+                            <span key={s.place} className="text-xs text-gray-600">
+                              {ordinal(s.place)}{' '}
+                              <span className={`font-bold ${s.place === 1 ? 'text-yellow-400' : s.place === 2 ? 'text-gray-300' : 'text-amber-600'}`}>
+                                ${(prizePool * s.pct / 100).toFixed(0)}
+                              </span>
+                              <span className="text-gray-700 ml-0.5">({s.pct}%)</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+      </div>
+    </div>
+  )
+}
+
 // ─── result form state ──────────────────────────────────────────────────────
 
 interface ResultFormState { winner: string; method: string; round: string }
@@ -349,6 +598,9 @@ export default function AdminPage() {
   const [partyCostTarget, setPartyCostTarget] = useState(0)
   const [partyCostInput, setPartyCostInput] = useState('')
   const [partyCostSaving, setPartyCostSaving] = useState(false)
+
+  // simulation mode
+  const [simMode, setSimMode] = useState(false)
 
   // competition form
   const [showAddComp, setShowAddComp] = useState(false)
@@ -647,10 +899,28 @@ export default function AdminPage() {
           <h1 className="text-2xl font-black text-white">UFC FIGHT NIGHT &mdash; ADMIN</h1>
           <p className="text-gray-500 text-sm mt-0.5">Competitions, fights, players &amp; scoring</p>
         </div>
-        <button onClick={loadData} disabled={dataLoading} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          {dataLoading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setSimMode(v => !v)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors border ${simMode ? 'bg-yellow-500 border-yellow-400 text-black' : 'bg-gray-800 border-gray-700 text-yellow-400 hover:border-yellow-600'}`}
+          >
+            {simMode ? '⚡ Sim Mode ON' : '⚡ Simulation'}
+          </button>
+          <button onClick={loadData} disabled={dataLoading} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            {dataLoading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
+
+      {/* Simulation Panel */}
+      {simMode && (
+        <SimulationPanel
+          competitions={competitions}
+          fights={fights}
+          partyCostTarget={partyCostTarget}
+          onExit={() => setSimMode(false)}
+        />
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
