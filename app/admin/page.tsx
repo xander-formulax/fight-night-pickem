@@ -1997,6 +1997,26 @@ export default function AdminPage() {
 
         if (pickEmPayouts.length === 0 && jackpotPayouts.length === 0) return null
 
+        // Aggregate payouts by player
+        const playerTotalsMap = new Map<string, { playerName: string; items: Array<{ label: string; amount: number; color: string }>; total: number; allPaid: boolean }>()
+        for (const p of pickEmPayouts) {
+          if (!playerTotalsMap.has(p.playerName)) playerTotalsMap.set(p.playerName, { playerName: p.playerName, items: [], total: 0, allPaid: true })
+          const e = playerTotalsMap.get(p.playerName)!
+          const placeLabel = p.label.split('—')[1]?.trim() ?? p.label
+          e.items.push({ label: placeLabel, amount: p.amount, color: 'text-green-400' })
+          e.total += p.amount
+          if (!p.paid) e.allPaid = false
+        }
+        for (const p of jackpotPayouts) {
+          if (!playerTotalsMap.has(p.playerName)) playerTotalsMap.set(p.playerName, { playerName: p.playerName, items: [], total: 0, allPaid: true })
+          const e = playerTotalsMap.get(p.playerName)!
+          const fightLabel = p.label.split('—')[0]?.trim() ?? p.label
+          e.items.push({ label: fightLabel, amount: p.amount, color: 'text-yellow-400' })
+          e.total += p.amount
+          if (!p.paid) e.allPaid = false
+        }
+        const sortedPlayerTotals = [...playerTotalsMap.values()].sort((a, b) => b.total - a.total)
+
         const unpaidPickEm = pickEmPayouts.filter((p) => !p.paid)
         const unpaidJackpot = jackpotPayouts.filter((p) => !p.paid)
         const totalOwed = [...unpaidPickEm, ...unpaidJackpot].reduce((s, p) => s + p.amount, 0)
@@ -2020,6 +2040,40 @@ export default function AdminPage() {
               )}
               {allPaid && <span className="text-gray-600 text-sm font-semibold">All paid ✓</span>}
             </div>
+
+            {/* Player totals summary */}
+            {sortedPlayerTotals.length > 0 && (
+              <div className="bg-gray-900 rounded-xl overflow-hidden mb-4">
+                <div className="px-5 py-3 border-b border-gray-800">
+                  <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Winner Totals</span>
+                </div>
+                <table className="w-full text-sm">
+                  <tbody>
+                    {sortedPlayerTotals.map((entry) => (
+                      <tr key={entry.playerName} className={`border-b border-gray-800/50 ${!entry.allPaid ? 'bg-gray-800/10' : ''}`}>
+                        <td className="px-5 py-3.5 text-white font-bold w-36 shrink-0">{entry.playerName}</td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-wrap gap-2">
+                            {entry.items.map((item, i) => (
+                              <span key={i} className="flex items-center gap-1">
+                                <span className="text-gray-500 text-xs">{item.label}</span>
+                                <span className={`font-bold text-sm ${item.color}`}>${item.amount}</span>
+                                {i < entry.items.length - 1 && <span className="text-gray-700 ml-1">+</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <span className="text-white font-black text-lg">${entry.total}</span>
+                          {entry.allPaid && <span className="ml-2 text-xs text-gray-600">paid</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <div className="space-y-4">
               {pickEmPayouts.length > 0 && (
                 <div className="bg-gray-900 rounded-xl overflow-hidden">
