@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div
           className="fixed inset-0 -z-10 pointer-events-none"
           style={{
-            backgroundImage: "url('/poster.jpg')",
+            backgroundImage: "url('/poster.webp')",
             backgroundSize: 'cover',
             backgroundPosition: 'center 20%',
             backgroundRepeat: 'no-repeat',
