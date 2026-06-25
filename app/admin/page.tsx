@@ -693,6 +693,7 @@ export default function AdminPage() {
   const [eventTitleSaving, setEventTitleSaving] = useState(false)
   const [posterUploading, setPosterUploading] = useState(false)
   const [posterUrl, setPosterUrl] = useState('')
+  const [posterError, setPosterError] = useState('')
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setDataLoading(true)
@@ -805,11 +806,13 @@ export default function AdminPage() {
 
   async function uploadPoster(file: File) {
     setPosterUploading(true)
+    setPosterError('')
     const fd = new FormData()
     fd.append('file', file)
     const res = await fetch('/api/upload-poster', { method: 'POST', body: fd })
     const data = await res.json()
     if (data.url) setPosterUrl(data.url)
+    else setPosterError(data.error ?? 'Upload failed. Make sure Supabase Storage is enabled and the event_settings table has a poster_url column.')
     setPosterUploading(false)
   }
 
@@ -1247,6 +1250,7 @@ export default function AdminPage() {
               {posterUrl && !posterUploading && (
                 <span className="text-green-500 text-xs font-semibold">✓ Poster active</span>
               )}
+              {posterError && <p className="text-red-400 text-xs mt-2">{posterError}</p>}
             </div>
           </div>
         </div>

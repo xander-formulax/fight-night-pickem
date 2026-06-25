@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 
 export function PosterBackground() {
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState('/poster.webp')
 
   useEffect(() => {
     fetch('/api/event-settings')
@@ -11,7 +11,6 @@ export function PosterBackground() {
       .catch(() => {})
   }, [])
 
-  if (!url) return null
   return (
     <div
       className="fixed inset-0 -z-10 pointer-events-none"
