@@ -78,8 +78,8 @@ const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
 // ─── competition form ───────────────────────────────────────────────────────
 
 interface SplitRow { place: number; pct: string }
-interface CompFormData { id?: string; name: string; entry_fee: string; description: string; expense_cut_pct: string; prize_splits: SplitRow[] }
-const blankComp = (): CompFormData => ({ name: '', entry_fee: '', description: '', expense_cut_pct: '50', prize_splits: [] })
+interface CompFormData { id?: string; name: string; entry_fee: string; description: string; expense_cut_pct: string; prize_splits: SplitRow[]; max_entries: string }
+const blankComp = (): CompFormData => ({ name: '', entry_fee: '', description: '', expense_cut_pct: '50', prize_splits: [], max_entries: '1' })
 
 function ordinal(n: number) {
   if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd'; return `${n}th`
@@ -173,9 +173,15 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
           <input type="text" value={form.entry_fee} onChange={(e) => set('entry_fee', e.target.value)} placeholder="e.g. $25" className={inputCls} />
         </div>
       </div>
-      <div>
-        <label className="block text-xs text-gray-400 mb-1">Description (optional — shown to players)</label>
-        <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. Top 3 places paid out" className={inputCls} />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Description (optional — shown to players)</label>
+          <input type="text" value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. Top 3 places paid out" className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Max Entries Per Player</label>
+          <input type="number" min={1} max={10} value={form.max_entries} onChange={(e) => set('max_entries', e.target.value)} placeholder="1" className={inputCls} />
+        </div>
       </div>
 
       {/* Expense cut */}
@@ -1002,7 +1008,7 @@ export default function AdminPage() {
     setCompSaving(true)
     const res = await fetch('/api/upsert-competition', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: data.id, name: data.name, entry_fee: data.entry_fee, description: data.description, expense_cut_pct: parseFloat(data.expense_cut_pct) || 0, prize_splits: splits }),
+      body: JSON.stringify({ id: data.id, name: data.name, entry_fee: data.entry_fee, description: data.description, expense_cut_pct: parseFloat(data.expense_cut_pct) || 0, prize_splits: splits, max_entries: parseInt(data.max_entries) || 1 }),
     })
     const result = await res.json()
     if (!res.ok) setCompError(result.error ?? 'Failed to save.')
@@ -1607,7 +1613,7 @@ export default function AdminPage() {
                 <div key={comp.id} className="bg-gray-900 rounded-xl p-5">
                   <p className="text-sm text-gray-400 mb-3">Editing: {comp.name}</p>
                   <CompetitionForm
-                    initial={{ id: comp.id, name: comp.name, entry_fee: comp.entry_fee, description: comp.description ?? '', expense_cut_pct: String(comp.expense_cut_pct ?? 50), prize_splits: (comp.prize_splits ?? []).map((s) => ({ place: s.place, pct: String(s.pct) })) }}
+                    initial={{ id: comp.id, name: comp.name, entry_fee: comp.entry_fee, description: comp.description ?? '', expense_cut_pct: String(comp.expense_cut_pct ?? 50), prize_splits: (comp.prize_splits ?? []).map((s) => ({ place: s.place, pct: String(s.pct) })), max_entries: String(comp.max_entries ?? 1) }}
                     onSave={saveComp}
                     onCancel={() => { setEditingCompId(null); setCompError('') }}
                     saving={compSaving}
@@ -1625,6 +1631,7 @@ export default function AdminPage() {
                     <span className="text-white font-bold text-lg">{comp.name}</span>
                     <span className="text-red-400 font-black">{comp.entry_fee}</span>
                     <span className="text-gray-300 text-sm">{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
+                    {(comp.max_entries ?? 1) > 1 && <span className="text-blue-400 text-xs">up to {comp.max_entries} entries</span>}
                     {(comp.expense_cut_pct ?? 50) > 0 && <span className="text-gray-400 text-xs">{comp.expense_cut_pct ?? 50}% expense cut</span>}
                   </div>
                   {comp.description && <p className="text-gray-300 text-sm mt-0.5">{comp.description}</p>}

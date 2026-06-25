@@ -23,6 +23,13 @@ interface PickState {
   round_pick: string
 }
 
+interface StoredEntry {
+  id: string
+  competition_id: string
+  entry_number: number
+  name: string
+}
+
 function winnerPts(odds: number): number {
   if (odds > 0) return odds
   if (odds < 0) return Math.round((100 / Math.abs(odds)) * 100)
@@ -54,15 +61,39 @@ function StatusBadge({ status }: { status: Fight['status'] }) {
   )
 }
 
+function getStoredEntries(): StoredEntry[] {
+  if (typeof window === 'undefined') return []
+  const raw = localStorage.getItem('fight_night_entries')
+  if (raw) {
+    try { return JSON.parse(raw) } catch { return [] }
+  }
+  // Migrate legacy single-player key
+  const legacyId = localStorage.getItem('fight_night_player_id')
+  if (legacyId) {
+    return [{ id: legacyId, competition_id: '', entry_number: 1, name: '' }]
+  }
+  return []
+}
+
+function saveStoredEntries(entries: StoredEntry[]) {
+  localStorage.setItem('fight_night_entries', JSON.stringify(entries))
+}
+
 export default function PlayPage() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [fights, setFights] = useState<Fight[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [existingPlayer, setExistingPlayer] = useState<Player | null>(null)
-  const [existingPicks, setExistingPicks] = useState<Pick[]>([])
   const [eventTitle, setEventTitle] = useState('')
 
+  // Multi-entry state
+  const [storedEntries, setStoredEntries] = useState<StoredEntry[]>([])
+  const [activeEntryIdx, setActiveEntryIdx] = useState(0)
+  const [viewingPlayer, setViewingPlayer] = useState<Player | null>(null)
+  const [viewingPicks, setViewingPicks] = useState<Pick[]>([])
+  const [isAddingEntry, setIsAddingEntry] = useState(false)
+
+  // Form state
   const [name, setName] = useState('')
   const [selectedCompetitionId, setSelectedCompetitionId] = useState('')
   const [picks, setPicks] = useState<Record<string, PickState>>({})
@@ -73,12 +104,46 @@ export default function PlayPage() {
   interface StoppageDraft {
     step: 'round' | 'minute' | 'second'
     round: number | null
-    minute: number | null  // 1–5 (internal)
-    second: number         // 0–59
+    minute: number | null
+    second: number
     error: string
     placing: boolean
   }
   const [stoppageDrafts, setStoppageDrafts] = useState<Record<string, StoppageDraft>>({})
+
+  const loadEntryData = useCallback(async (entry: StoredEntry) => {
+    const supabase = getSupabaseBrowser()
+    // Resolve competition_id from DB if the legacy entry didn't store it
+    const { data: playerData } = await supabase
+      .from('players').select('*').eq('id', entry.id).single()
+    if (playerData) {
+      setViewingPlayer(playerData)
+      // Patch stored entry with name/competition_id if migrating from legacy
+      if (!entry.competition_id || !entry.name) {
+        setStoredEntries((prev) => {
+          const updated = prev.map((e) =>
+            e.id === entry.id
+              ? { ...e, competition_id: playerData.competition_id ?? '', name: playerData.name, entry_number: playerData.entry_number ?? 1 }
+              : e
+          )
+          saveStoredEntries(updated)
+          return updated
+        })
+      }
+      const { data: picksData } = await supabase
+        .from('picks').select('*').eq('player_id', entry.id)
+      if (picksData) setViewingPicks(picksData)
+    } else {
+      // Entry no longer valid (e.g., reset)
+      setStoredEntries((prev) => {
+        const updated = prev.filter((e) => e.id !== entry.id)
+        saveStoredEntries(updated)
+        return updated
+      })
+      setViewingPlayer(null)
+      setViewingPicks([])
+    }
+  }, [])
 
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
@@ -106,26 +171,15 @@ export default function PlayPage() {
       })
     }
 
-    const playerId =
-      typeof window !== 'undefined' ? localStorage.getItem('fight_night_player_id') : null
+    const entries = getStoredEntries()
+    setStoredEntries(entries)
 
-    if (playerId) {
-      const { data: playerData } = await supabase
-        .from('players')
-        .select('*')
-        .eq('id', playerId)
-        .single()
-      if (playerData) {
-        setExistingPlayer(playerData)
-        const { data: picksData } = await supabase
-          .from('picks')
-          .select('*')
-          .eq('player_id', playerId)
-        if (picksData) setExistingPicks(picksData)
-      }
+    if (entries.length > 0) {
+      const activeEntry = entries[0]
+      await loadEntryData(activeEntry)
     }
 
-    // Load stoppage bets for all open fights
+    // Load stoppage bets for open fights
     const openFightIds = (fightsData ?? []).filter((f) => f.stoppage_bet_open).map((f) => f.id)
     if (openFightIds.length > 0) {
       const { data: betsData } = await supabase
@@ -134,9 +188,17 @@ export default function PlayPage() {
     }
 
     setLoading(false)
-  }, [])
+  }, [loadEntryData])
 
-  // Real-time updates so taken minutes refresh instantly for all players
+  // Reload player data when switching entries
+  useEffect(() => {
+    if (storedEntries.length > 0 && storedEntries[activeEntryIdx]) {
+      loadEntryData(storedEntries[activeEntryIdx])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEntryIdx])
+
+  // Real-time stoppage bet updates
   useEffect(() => {
     const supabase = getSupabaseBrowser()
     const channel = supabase
@@ -164,6 +226,12 @@ export default function PlayPage() {
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [loadData])
 
+  function resetPicksToEmpty(fightList: Fight[]) {
+    const next: Record<string, PickState> = {}
+    fightList.forEach((f) => { next[f.id] = { winner_pick: '', method_pick: '', round_pick: '' } })
+    setPicks(next)
+  }
+
   function updatePick(fightId: string, field: keyof PickState, value: string) {
     setPicks((prev) => ({
       ...prev,
@@ -184,7 +252,7 @@ export default function PlayPage() {
   }
 
   async function confirmStoppageBet(fightId: string) {
-    if (!existingPlayer) return
+    if (!viewingPlayer) return
     const draft = stoppageDrafts[fightId]
     if (!draft || draft.round == null || draft.minute == null) return
     updateDraft(fightId, { placing: true, error: '' })
@@ -193,7 +261,7 @@ export default function PlayPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fight_id: fightId,
-        player_id: existingPlayer.id,
+        player_id: viewingPlayer.id,
         round_pick: draft.round,
         minute_pick: draft.minute,
         second_pick: draft.second,
@@ -204,7 +272,6 @@ export default function PlayPage() {
       updateDraft(fightId, { placing: false, error: result.error ?? 'Failed to place bet' })
     } else {
       setStoppageBets((prev) => [...prev.filter((b) => b.id !== result.bet.id), result.bet])
-      // Reset draft — bet is now locked
       setStoppageDrafts((prev) => {
         const next = { ...prev }
         delete next[fightId]
@@ -247,6 +314,9 @@ export default function PlayPage() {
 
     setSubmitting(true)
 
+    const existingEntriesForComp = storedEntries.filter((e) => e.competition_id === selectedCompetitionId)
+    const entryNumber = existingEntriesForComp.length + 1
+
     const picksToSubmit = upcomingFights.map((fight) => ({
       fight_id: fight.id,
       winner_pick: picks[fight.id].winner_pick,
@@ -264,6 +334,7 @@ export default function PlayPage() {
         name,
         competition_id: selectedCompetitionId,
         picks: picksToSubmit,
+        entry_number: entryNumber,
       }),
     })
 
@@ -275,9 +346,19 @@ export default function PlayPage() {
       return
     }
 
-    localStorage.setItem('fight_night_player_id', result.player_id)
+    const newEntry: StoredEntry = {
+      id: result.player_id,
+      competition_id: selectedCompetitionId,
+      entry_number: entryNumber,
+      name,
+    }
+    const updatedEntries = [...storedEntries, newEntry]
+    saveStoredEntries(updatedEntries)
+    setStoredEntries(updatedEntries)
+    setActiveEntryIdx(updatedEntries.length - 1)
+    setIsAddingEntry(false)
     setSubmitting(false)
-    await loadData()
+    await loadEntryData(newEntry)
   }
 
   if (loading) {
@@ -288,277 +369,334 @@ export default function PlayPage() {
     )
   }
 
-  const selectedComp = competitions.find((c) => c.id === existingPlayer?.competition_id)
+  // ── Confirmed / multi-entry view ──────────────────────────────────────────
+  if (storedEntries.length > 0 && !isAddingEntry) {
+    const activeEntry = storedEntries[activeEntryIdx] ?? storedEntries[0]
+    const selectedComp = competitions.find((c) => c.id === viewingPlayer?.competition_id)
 
-  // ── Confirmation view ─────────────────────────────────────────────────────
-  if (existingPlayer) {
+    // Which competitions still have entries available for this player?
+    const availableComps = competitions.filter((comp) => {
+      const maxEntries = comp.max_entries ?? 1
+      const usedForComp = storedEntries.filter((e) => e.competition_id === comp.id).length
+      return maxEntries > 1 && usedForComp < maxEntries
+    })
+
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
         <PlayerTabs />
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
           <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
         </div>
 
-        {!existingPlayer.activated ? (
-          <div className="bg-yellow-900/40 border border-yellow-600 rounded-xl p-5 mb-6 text-center">
-            <p className="text-yellow-300 font-bold text-lg">
-              Your picks are locked until payment is confirmed.
-            </p>
-            <p className="text-yellow-500 text-sm mt-1">
-              Contact the organizer to complete your payment.
-            </p>
-          </div>
-        ) : (
-          <div className="bg-green-900/40 border border-green-600 rounded-xl p-5 mb-6 text-center">
-            <p className="text-green-300 font-bold text-lg">
-              Your entry is confirmed and activated!
-            </p>
+        {/* Entry tabs — shown when player has multiple entries */}
+        {storedEntries.length > 1 && (
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+            {storedEntries.map((entry, idx) => {
+              const comp = competitions.find((c) => c.id === entry.competition_id)
+              return (
+                <button
+                  key={entry.id}
+                  onClick={() => setActiveEntryIdx(idx)}
+                  className={`shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-colors ${
+                    idx === activeEntryIdx
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-800/70 text-gray-300 hover:text-white'
+                  }`}
+                >
+                  {comp?.name ?? 'Entry'} #{entry.entry_number}
+                </button>
+              )
+            })}
           </div>
         )}
 
-        <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 mb-6">
-          <h3 className="text-lg font-bold text-white mb-3">Your Entry Details</h3>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <div>
-              <dt className="text-gray-300">Name</dt>
-              <dd className="text-white font-semibold">{existingPlayer.name}</dd>
+        {!viewingPlayer ? (
+          <div className="text-center text-gray-400 py-8 animate-pulse">Loading entry…</div>
+        ) : (
+          <>
+            {!viewingPlayer.activated ? (
+              <div className="bg-yellow-900/40 border border-yellow-600 rounded-xl p-5 mb-6 text-center">
+                <p className="text-yellow-300 font-bold text-lg">
+                  Your picks are locked until payment is confirmed.
+                </p>
+                <p className="text-yellow-500 text-sm mt-1">
+                  Contact the organizer to complete your payment.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-green-900/40 border border-green-600 rounded-xl p-5 mb-6 text-center">
+                <p className="text-green-300 font-bold text-lg">
+                  Your entry is confirmed and activated!
+                </p>
+              </div>
+            )}
+
+            <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 mb-6">
+              <h3 className="text-lg font-bold text-white mb-3">Your Entry Details</h3>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <dt className="text-gray-300">Name</dt>
+                  <dd className="text-white font-semibold">{viewingPlayer.name}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-300">Prize Pool</dt>
+                  <dd className="text-white font-semibold">
+                    {selectedComp ? `${selectedComp.name} (${selectedComp.entry_fee})` : viewingPlayer.tier}
+                  </dd>
+                </div>
+                {storedEntries.length > 1 && (
+                  <div>
+                    <dt className="text-gray-300">Entry</dt>
+                    <dd className="text-white font-semibold">#{activeEntry.entry_number}</dd>
+                  </div>
+                )}
+              </dl>
             </div>
-            <div>
-              <dt className="text-gray-300">Prize Pool</dt>
-              <dd className="text-white font-semibold">
-                {selectedComp ? `${selectedComp.name} (${selectedComp.entry_fee})` : existingPlayer.tier}
-              </dd>
-            </div>
-          </dl>
-        </div>
 
-        {/* ── Stoppage Time Jackpot ────────────────────────────────────── */}
-        {(() => {
-          const jackpotFights = fights.filter((f) => f.stoppage_bet_open && f.status !== 'complete')
-          if (jackpotFights.length === 0) return null
-          return (
-            <div className="mb-6">
-              <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
-              <p className="text-gray-300 text-sm mb-1">
-                Guess the exact moment the fight gets stopped — pick a round, minute, and second.
-                The closest guess that <span className="text-white font-semibold">doesn&apos;t go over</span> wins the whole pot (Price Is Right rules).
-              </p>
-              <p className="text-gray-400 text-xs mb-4">
-                If the fight goes to decision, the pot rolls over to the next jackpot fight. Each second can only be claimed by one person — picks are final once confirmed.
-              </p>
-              <div className="space-y-4">
-                {jackpotFights.map((fight) => {
-                  const fightBets = stoppageBets.filter((b) => b.fight_id === fight.id)
-                  const myBet = fightBets.find((b) => b.player_id === existingPlayer.id)
-                  const draft = stoppageDrafts[fight.id] ?? { step: 'round' as const, round: null, minute: null, second: 0, error: '', placing: false }
-                  const fee = fight.stoppage_bet_fee ?? '20'
-                  const feeNum = parseFloat(fee) || 20
-                  const activatedCount = fightBets.filter((b) => b.activated).length
-                  const rollover = fight.jackpot_rollover ?? 0
-                  const potTotal = activatedCount * feeNum + rollover
+            {/* ── Stoppage Time Jackpot ────────────────────────────────── */}
+            {(() => {
+              const jackpotFights = fights.filter((f) => f.stoppage_bet_open && f.status !== 'complete')
+              if (jackpotFights.length === 0) return null
+              return (
+                <div className="mb-6">
+                  <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
+                  <p className="text-gray-300 text-sm mb-1">
+                    Guess the exact moment the fight gets stopped — pick a round, minute, and second.
+                    The closest guess that <span className="text-white font-semibold">doesn&apos;t go over</span> wins the whole pot (Price Is Right rules).
+                  </p>
+                  <p className="text-gray-400 text-xs mb-4">
+                    If the fight goes to decision, the pot rolls over to the next jackpot fight. Each second can only be claimed by one person — picks are final once confirmed.
+                  </p>
+                  <div className="space-y-4">
+                    {jackpotFights.map((fight) => {
+                      const fightBets = stoppageBets.filter((b) => b.fight_id === fight.id)
+                      const myBet = fightBets.find((b) => b.player_id === viewingPlayer.id)
+                      const draft = stoppageDrafts[fight.id] ?? { step: 'round' as const, round: null, minute: null, second: 0, error: '', placing: false }
+                      const fee = fight.stoppage_bet_fee ?? '20'
+                      const feeNum = parseFloat(fee) || 20
+                      const activatedCount = fightBets.filter((b) => b.activated).length
+                      const rollover = fight.jackpot_rollover ?? 0
+                      const potTotal = activatedCount * feeNum + rollover
 
-                  const takenInMinute = (r: number, m: number) =>
-                    fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
+                      const takenInMinute = (r: number, m: number) =>
+                        fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
 
-                  return (
-                    <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-5 border border-yellow-900/40">
-                      {/* Header */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <p className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-0.5">
-                            Fight {fight.fight_number} — Jackpot
-                          </p>
-                          <p className="text-white font-bold">
-                            {fight.fighter_a} vs {fight.fighter_b}
-                          </p>
-                          {rollover > 0 && (
-                            <p className="text-xs text-orange-400 mt-1 font-semibold">
-                              🔥 Includes ${rollover} rollover from previous fight
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          {potTotal > 0 ? (
-                            <>
-                              <p className="text-yellow-400 font-black text-xl">${potTotal}</p>
-                              <p className="text-xs text-gray-300">current pot</p>
-                              <p className="text-xs text-gray-400">${fee} entry</p>
-                            </>
+                      return (
+                        <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-5 border border-yellow-900/40">
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                              <p className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-0.5">
+                                Fight {fight.fight_number} — Jackpot
+                              </p>
+                              <p className="text-white font-bold">
+                                {fight.fighter_a} vs {fight.fighter_b}
+                              </p>
+                              {rollover > 0 && (
+                                <p className="text-xs text-orange-400 mt-1 font-semibold">
+                                  🔥 Includes ${rollover} rollover from previous fight
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              {potTotal > 0 ? (
+                                <>
+                                  <p className="text-yellow-400 font-black text-xl">${potTotal}</p>
+                                  <p className="text-xs text-gray-300">current pot</p>
+                                  <p className="text-xs text-gray-400">${fee} entry</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-yellow-400 font-black text-xl">${fee}</p>
+                                  <p className="text-xs text-gray-300">entry fee</p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {myBet ? (
+                            <div className="bg-yellow-900/25 border border-yellow-700/50 rounded-xl px-4 py-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-xs text-yellow-600 uppercase tracking-wider mb-0.5">Your Pick — Locked</p>
+                                  <p className="text-yellow-300 font-black text-lg">
+                                    Round {myBet.round_pick} &bull; {myBet.minute_pick - 1}:{myBet.second_pick.toString().padStart(2, '0')}
+                                  </p>
+                                </div>
+                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${myBet.activated ? 'bg-green-900 text-green-300' : 'bg-orange-900/60 text-orange-300'}`}>
+                                  {myBet.activated ? 'Confirmed' : 'Awaiting Payment'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-2 italic">Pick is final and cannot be changed.</p>
+                            </div>
                           ) : (
                             <>
-                              <p className="text-yellow-400 font-black text-xl">${fee}</p>
-                              <p className="text-xs text-gray-300">entry fee</p>
+                              {draft.step === 'round' && (
+                                <div>
+                                  <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Step 1 — Select a Round</p>
+                                  <div className="flex gap-2 flex-wrap">
+                                    {Array.from({ length: fight.rounds ?? 3 }, (_, i) => i + 1).map((r) => (
+                                      <button
+                                        key={r}
+                                        onClick={() => updateDraft(fight.id, { step: 'minute', round: r })}
+                                        className="px-5 py-3 rounded-xl border-2 border-gray-700 text-white font-bold hover:border-yellow-600 hover:bg-yellow-900/20 transition-all"
+                                      >
+                                        Round {r}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {draft.step === 'minute' && draft.round != null && (
+                                <div>
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <button onClick={() => updateDraft(fight.id, { step: 'round', round: null, minute: null })} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
+                                    <p className="text-xs text-gray-300 uppercase tracking-wider">Round {draft.round} — Select a Minute</p>
+                                  </div>
+                                  <div className="flex gap-2 flex-wrap">
+                                    {[0, 1, 2, 3, 4].map((clockMin) => {
+                                      const minutePick = clockMin + 1
+                                      const taken = takenInMinute(draft.round!, minutePick)
+                                      const full = taken >= 60
+                                      return (
+                                        <button
+                                          key={clockMin}
+                                          onClick={() => !full && updateDraft(fight.id, { step: 'second', minute: minutePick, second: 0 })}
+                                          disabled={full}
+                                          className={`px-4 py-3 rounded-xl border-2 font-bold transition-all ${
+                                            full
+                                              ? 'border-gray-800 text-gray-400 cursor-not-allowed'
+                                              : 'border-gray-700 text-white hover:border-yellow-600 hover:bg-yellow-900/20'
+                                          }`}
+                                        >
+                                          <span className="text-base">{clockMin}:__</span>
+                                          {taken > 0 && <span className="block text-xs text-gray-300 font-normal">{taken}/60 taken</span>}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {draft.step === 'second' && draft.round != null && draft.minute != null && (
+                                <div>
+                                  <div className="flex items-center gap-2 mb-4">
+                                    <button onClick={() => updateDraft(fight.id, { step: 'minute', minute: null, second: 0 })} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
+                                    <p className="text-xs text-gray-300 uppercase tracking-wider">Round {draft.round}, Minute {draft.minute - 1}:__ — Pick your second</p>
+                                  </div>
+                                  <div className="text-center mb-4">
+                                    <p className="text-5xl font-black text-yellow-400 tabular-nums">
+                                      {draft.minute - 1}:{draft.second.toString().padStart(2, '0')}
+                                    </p>
+                                    <p className="text-gray-300 text-sm mt-1">Round {draft.round}</p>
+                                  </div>
+                                  <input
+                                    type="range" min={0} max={59} value={draft.second}
+                                    onChange={(e) => updateDraft(fight.id, { second: parseInt(e.target.value) })}
+                                    className="w-full accent-yellow-500 mb-4"
+                                  />
+                                  <div className="flex justify-between text-xs text-gray-400 mb-5">
+                                    <span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:59</span>
+                                  </div>
+                                  <button
+                                    onClick={() => confirmStoppageBet(fight.id)}
+                                    disabled={draft.placing}
+                                    className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-300 text-black font-black py-3 rounded-xl transition-colors"
+                                  >
+                                    {draft.placing ? 'Checking…' : `Confirm Pick — R${draft.round} ${draft.minute - 1}:${draft.second.toString().padStart(2, '0')}`}
+                                  </button>
+                                  <p className="text-xs text-gray-400 text-center mt-2 italic">Picks are final and cannot be changed after confirming.</p>
+                                </div>
+                              )}
+
+                              {draft.error && (
+                                <p className="text-red-400 text-sm mt-3">{draft.error}</p>
+                              )}
+
+                              {draft.step === 'round' && (
+                                <p className="text-xs text-gray-400 mt-3 italic">
+                                  After locking in, contact the organizer to pay ${fee}.
+                                </p>
+                              )}
                             </>
                           )}
                         </div>
-                      </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
 
-                      {/* Locked pick display */}
-                      {myBet ? (
-                        <div className="bg-yellow-900/25 border border-yellow-700/50 rounded-xl px-4 py-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs text-yellow-600 uppercase tracking-wider mb-0.5">Your Pick — Locked</p>
-                              <p className="text-yellow-300 font-black text-lg">
-                                Round {myBet.round_pick} &bull; {myBet.minute_pick - 1}:{myBet.second_pick.toString().padStart(2, '0')}
-                              </p>
-                            </div>
-                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${myBet.activated ? 'bg-green-900 text-green-300' : 'bg-orange-900/60 text-orange-300'}`}>
-                              {myBet.activated ? 'Confirmed' : 'Awaiting Payment'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-400 mt-2 italic">Pick is final and cannot be changed.</p>
-                        </div>
-                      ) : (
-                        <>
-                          {/* Step 1: Select Round */}
-                          {draft.step === 'round' && (
-                            <div>
-                              <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Step 1 — Select a Round</p>
-                              <div className="flex gap-2 flex-wrap">
-                                {Array.from({ length: fight.rounds ?? 3 }, (_, i) => i + 1).map((r) => (
-                                  <button
-                                    key={r}
-                                    onClick={() => updateDraft(fight.id, { step: 'minute', round: r })}
-                                    className="px-5 py-3 rounded-xl border-2 border-gray-700 text-white font-bold hover:border-yellow-600 hover:bg-yellow-900/20 transition-all"
-                                  >
-                                    Round {r}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Step 2: Select Minute within round */}
-                          {draft.step === 'minute' && draft.round != null && (
-                            <div>
-                              <div className="flex items-center gap-2 mb-3">
-                                <button onClick={() => updateDraft(fight.id, { step: 'round', round: null, minute: null })} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
-                                <p className="text-xs text-gray-300 uppercase tracking-wider">Round {draft.round} — Select a Minute</p>
-                              </div>
-                              <div className="flex gap-2 flex-wrap">
-                                {[0, 1, 2, 3, 4].map((clockMin) => {
-                                  const minutePick = clockMin + 1
-                                  const taken = takenInMinute(draft.round!, minutePick)
-                                  const full = taken >= 60
-                                  return (
-                                    <button
-                                      key={clockMin}
-                                      onClick={() => !full && updateDraft(fight.id, { step: 'second', minute: minutePick, second: 0 })}
-                                      disabled={full}
-                                      className={`px-4 py-3 rounded-xl border-2 font-bold transition-all ${
-                                        full
-                                          ? 'border-gray-800 text-gray-400 cursor-not-allowed'
-                                          : 'border-gray-700 text-white hover:border-yellow-600 hover:bg-yellow-900/20'
-                                      }`}
-                                    >
-                                      <span className="text-base">{clockMin}:__</span>
-                                      {taken > 0 && <span className="block text-xs text-gray-300 font-normal">{taken}/60 taken</span>}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Step 3: Second slider + Confirm */}
-                          {draft.step === 'second' && draft.round != null && draft.minute != null && (
-                            <div>
-                              <div className="flex items-center gap-2 mb-4">
-                                <button onClick={() => updateDraft(fight.id, { step: 'minute', minute: null, second: 0 })} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
-                                <p className="text-xs text-gray-300 uppercase tracking-wider">Round {draft.round}, Minute {draft.minute - 1}:__ — Pick your second</p>
-                              </div>
-
-                              <div className="text-center mb-4">
-                                <p className="text-5xl font-black text-yellow-400 tabular-nums">
-                                  {draft.minute - 1}:{draft.second.toString().padStart(2, '0')}
-                                </p>
-                                <p className="text-gray-300 text-sm mt-1">Round {draft.round}</p>
-                              </div>
-
-                              <input
-                                type="range"
-                                min={0}
-                                max={59}
-                                value={draft.second}
-                                onChange={(e) => updateDraft(fight.id, { second: parseInt(e.target.value) })}
-                                className="w-full accent-yellow-500 mb-4"
-                              />
-                              <div className="flex justify-between text-xs text-gray-400 mb-5">
-                                <span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:59</span>
-                              </div>
-
-                              <button
-                                onClick={() => confirmStoppageBet(fight.id)}
-                                disabled={draft.placing}
-                                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-300 text-black font-black py-3 rounded-xl transition-colors"
-                              >
-                                {draft.placing ? 'Checking…' : `Confirm Pick — R${draft.round} ${draft.minute - 1}:${draft.second.toString().padStart(2, '0')}`}
-                              </button>
-                              <p className="text-xs text-gray-400 text-center mt-2 italic">Picks are final and cannot be changed after confirming.</p>
-                            </div>
-                          )}
-
-                          {draft.error && (
-                            <p className="text-red-400 text-sm mt-3">{draft.error}</p>
-                          )}
-
-                          {draft.step === 'round' && (
-                            <p className="text-xs text-gray-400 mt-3 italic">
-                              After locking in, contact the organizer to pay ${fee}.
-                            </p>
-                          )}
-                        </>
-                      )}
+            <h3 className="text-lg font-bold text-white mb-3">Your Picks</h3>
+            <div className="space-y-3">
+              {fights.map((fight) => {
+                const pick = viewingPicks.find((p) => p.fight_id === fight.id)
+                return (
+                  <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-gray-300 text-xs font-medium">FIGHT {fight.fight_number}</span>
+                      <StatusBadge status={fight.status} />
                     </div>
+                    <div className="text-white font-semibold mb-1">
+                      {fight.fighter_a} vs {fight.fighter_b}
+                    </div>
+                    {pick ? (
+                      <div className="text-sm">
+                        <span className="text-red-400 font-bold">{pick.winner_pick}</span>
+                        <span className="text-gray-300 mx-1">by</span>
+                        <span className="text-orange-400">{pick.method_pick}</span>
+                        {pick.round_pick != null && (
+                          <span className="text-gray-400"> &mdash; Round {pick.round_pick}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-400 italic">
+                        Fight was locked before submission
+                      </div>
+                    )}
+                    {fight.status === 'complete' && fight.result_winner && (
+                      <div className="mt-2 text-xs text-gray-300">
+                        Result:{' '}
+                        <span className="text-white">{fight.result_winner}</span>
+                        {' by '}
+                        <span className="text-white">{fight.result_method}</span>
+                        {fight.result_round != null && ` (Round ${fight.result_round})`}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Add Another Entry buttons */}
+            {availableComps.length > 0 && (
+              <div className="mt-6 space-y-2">
+                <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">Add Another Entry</p>
+                {availableComps.map((comp) => {
+                  const used = storedEntries.filter((e) => e.competition_id === comp.id).length
+                  const max = comp.max_entries ?? 1
+                  return (
+                    <button
+                      key={comp.id}
+                      onClick={() => {
+                        setName(viewingPlayer?.name ?? '')
+                        setSelectedCompetitionId(comp.id)
+                        resetPicksToEmpty(fights)
+                        setIsAddingEntry(true)
+                      }}
+                      className="w-full flex items-center justify-between bg-gray-800/70 hover:bg-gray-700/70 border border-gray-700 rounded-xl px-5 py-3 transition-colors"
+                    >
+                      <span className="text-white font-bold">{comp.name} — Entry #{used + 1}</span>
+                      <span className="text-gray-400 text-sm">{used}/{max} used · {comp.entry_fee}</span>
+                    </button>
                   )
                 })}
               </div>
-            </div>
-          )
-        })()}
-
-        <h3 className="text-lg font-bold text-white mb-3">Your Picks</h3>
-        <div className="space-y-3">
-          {fights.map((fight) => {
-            const pick = existingPicks.find((p) => p.fight_id === fight.id)
-            return (
-              <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-gray-300 text-xs font-medium">FIGHT {fight.fight_number}</span>
-                  <StatusBadge status={fight.status} />
-                </div>
-                <div className="text-white font-semibold mb-1">
-                  {fight.fighter_a} vs {fight.fighter_b}
-                </div>
-                {pick ? (
-                  <div className="text-sm">
-                    <span className="text-red-400 font-bold">{pick.winner_pick}</span>
-                    <span className="text-gray-300 mx-1">by</span>
-                    <span className="text-orange-400">{pick.method_pick}</span>
-                    {pick.round_pick != null && (
-                      <span className="text-gray-400"> &mdash; Round {pick.round_pick}</span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400 italic">
-                    Fight was locked before submission
-                  </div>
-                )}
-                {fight.status === 'complete' && fight.result_winner && (
-                  <div className="mt-2 text-xs text-gray-300">
-                    Result:{' '}
-                    <span className="text-white">{fight.result_winner}</span>
-                    {' by '}
-                    <span className="text-white">{fight.result_method}</span>
-                    {fight.result_round != null && ` (Round ${fight.result_round})`}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+            )}
+          </>
+        )}
       </div>
     )
   }
@@ -574,7 +712,14 @@ export default function PlayPage() {
       <div className="text-center mb-8">
         <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
         <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
-        <p className="text-gray-300 mt-2 text-sm">Submit your picks for tonight's fights</p>
+        {isAddingEntry ? (
+          <p className="text-gray-300 mt-2 text-sm">
+            Adding entry #{storedEntries.filter((e) => e.competition_id === selectedCompetitionId).length + 1} for{' '}
+            <span className="text-white font-semibold">{competitions.find((c) => c.id === selectedCompetitionId)?.name}</span>
+          </p>
+        ) : (
+          <p className="text-gray-300 mt-2 text-sm">Submit your picks for tonight's fights</p>
+        )}
       </div>
 
       {competitions.length === 0 ? (
@@ -605,48 +750,62 @@ export default function PlayPage() {
                 Choose Your Prize Pool
               </label>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {competitions.map((comp) => (
-                  <label
-                    key={comp.id}
-                    className={`flex flex-col p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      selectedCompetitionId === comp.id
-                        ? 'border-red-500 bg-red-900/20'
-                        : 'border-gray-700 hover:border-gray-500'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="competition"
-                      value={comp.id}
-                      checked={selectedCompetitionId === comp.id}
-                      onChange={() => setSelectedCompetitionId(comp.id)}
-                      className="sr-only"
-                    />
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-white font-bold text-lg">{comp.name}</span>
-                      <span className="text-red-400 font-black text-xl">{comp.entry_fee}</span>
-                    </div>
-                    {comp.description && (
-                      <span className="text-gray-400 text-sm mt-1">{comp.description}</span>
-                    )}
-                    {(comp.prize_splits ?? []).length > 0 && (
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
-                        {(comp.prize_splits ?? []).map((s) => (
-                          <span key={s.place} className="text-xs text-gray-300">
-                            {s.place === 1 ? '1st' : s.place === 2 ? '2nd' : s.place === 3 ? '3rd' : `${s.place}th`}
-                            {': '}<span className="text-green-400 font-semibold">{s.pct}%</span>
-                          </span>
-                        ))}
-                        {(comp.expense_cut_pct ?? 0) > 0 && (
-                          <span className="text-xs text-gray-400">· {comp.expense_cut_pct}% expense cut</span>
-                        )}
+                {competitions.map((comp) => {
+                  const usedForComp = storedEntries.filter((e) => e.competition_id === comp.id).length
+                  const maxEntries = comp.max_entries ?? 1
+                  const isMaxed = usedForComp >= maxEntries
+                  const entryNumIfSelected = usedForComp + 1
+
+                  return (
+                    <label
+                      key={comp.id}
+                      className={`flex flex-col p-4 rounded-xl border-2 transition-all ${
+                        isMaxed
+                          ? 'border-gray-800 opacity-40 cursor-not-allowed'
+                          : selectedCompetitionId === comp.id
+                          ? 'border-red-500 bg-red-900/20 cursor-pointer'
+                          : 'border-gray-700 hover:border-gray-500 cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="competition"
+                        value={comp.id}
+                        checked={selectedCompetitionId === comp.id}
+                        onChange={() => !isMaxed && setSelectedCompetitionId(comp.id)}
+                        disabled={isMaxed}
+                        className="sr-only"
+                      />
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-white font-bold text-lg">{comp.name}</span>
+                        <span className="text-red-400 font-black text-xl">{comp.entry_fee}</span>
                       </div>
-                    )}
-                  </label>
-                ))}
+                      {comp.description && (
+                        <span className="text-gray-400 text-sm mt-1">{comp.description}</span>
+                      )}
+                      {maxEntries > 1 && (
+                        <span className={`text-xs mt-1.5 font-semibold ${isMaxed ? 'text-gray-500' : 'text-blue-400'}`}>
+                          {isMaxed ? `Max entries reached (${maxEntries}/${maxEntries})` : `Entry #${entryNumIfSelected} of ${maxEntries} max`}
+                        </span>
+                      )}
+                      {(comp.prize_splits ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
+                          {(comp.prize_splits ?? []).map((s) => (
+                            <span key={s.place} className="text-xs text-gray-300">
+                              {s.place === 1 ? '1st' : s.place === 2 ? '2nd' : s.place === 3 ? '3rd' : `${s.place}th`}
+                              {': '}<span className="text-green-400 font-semibold">{s.pct}%</span>
+                            </span>
+                          ))}
+                          {(comp.expense_cut_pct ?? 0) > 0 && (
+                            <span className="text-xs text-gray-400">· {comp.expense_cut_pct}% expense cut</span>
+                          )}
+                        </div>
+                      )}
+                    </label>
+                  )
+                })}
               </div>
             </div>
-
           </div>
 
           {/* Fight picks */}
@@ -766,7 +925,6 @@ export default function PlayPage() {
                     </div>
                   )}
 
-                  {/* Potential points breakdown */}
                   {!isLocked && (() => {
                     const p = calcPotential(fight, pick)
                     if (!p) return null
@@ -812,13 +970,24 @@ export default function PlayPage() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
-          >
-            {submitting ? 'SUBMITTING...' : 'LOCK IN MY PICKS'}
-          </button>
+          <div className="flex gap-3">
+            {isAddingEntry && (
+              <button
+                type="button"
+                onClick={() => { setIsAddingEntry(false); setActiveEntryIdx(storedEntries.length - 1) }}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
+            >
+              {submitting ? 'SUBMITTING...' : isAddingEntry ? 'LOCK IN ENTRY' : 'LOCK IN MY PICKS'}
+            </button>
+          </div>
         </form>
       )}
 

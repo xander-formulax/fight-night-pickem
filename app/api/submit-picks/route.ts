@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { name, competition_id, picks } = body
+  const { name, competition_id, picks, entry_number } = body
 
   if (!name || !competition_id || !Array.isArray(picks) || picks.length === 0) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
       tiebreaker: '',
       paid: false,
       activated: false,
+      entry_number: Math.max(1, parseInt(entry_number ?? '1', 10) || 1),
     })
     .select()
     .single()

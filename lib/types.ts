@@ -10,6 +10,7 @@ export interface Competition {
   description?: string | null
   expense_cut_pct: number
   prize_splits: PrizeSplit[]
+  max_entries?: number | null
   created_at: string
 }
 
@@ -56,6 +57,7 @@ export interface Player {
   paid: boolean
   activated: boolean
   payout_paid?: boolean
+  entry_number?: number | null
   created_at: string
 }
 

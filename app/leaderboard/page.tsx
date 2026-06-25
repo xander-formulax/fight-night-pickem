@@ -14,12 +14,13 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 function PlayerModal({
-  entry, fights, picks, onClose,
+  entry, fights, picks, onClose, showEntryNum,
 }: {
   entry: PlayerWithScores
   fights: Fight[]
   picks: Pick[]
   onClose: () => void
+  showEntryNum: boolean
 }) {
   const playerPicks = picks.filter((p) => p.player_id === entry.player.id)
   const pickMap: Record<string, Pick> = {}
@@ -40,7 +41,7 @@ function PlayerModal({
           <div>
             <h2 className="text-2xl font-black text-white">{entry.player.name}</h2>
             <p className="text-gray-300 text-sm mt-0.5">
-              {entry.player.competition_id ? '' : entry.player.tier}
+              {showEntryNum ? `Entry #${entry.player.entry_number ?? 1}` : (entry.player.competition_id ? '' : entry.player.tier)}
             </p>
           </div>
           <div className="text-right">
@@ -361,69 +362,85 @@ export default function LeaderboardPage() {
         <div className="text-center text-gray-400 text-3xl font-black mt-20 tracking-widest">
           WAITING FOR PLAYERS
         </div>
-      ) : (
-        <div className="max-w-2xl mx-auto space-y-2">
-          <p className="text-center text-gray-400 text-xs mb-4 tracking-wider">TAP A NAME TO SEE THEIR PICKS</p>
-          {entries.map((entry, idx) => {
-            const rank = idx + 1
-            const isFirst = rank === 1
-            const isTop3 = rank <= 3
-            return (
-              <button
-                key={entry.player.id}
-                onClick={() => setExpandedEntry(entry)}
-                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all text-left cursor-pointer hover:border-gray-600 active:scale-[0.99] ${
-                  isFirst
-                    ? 'bg-yellow-900/15 border-yellow-800/40 hover:bg-yellow-900/25'
-                    : isTop3
-                    ? 'bg-gray-800/40 border-gray-700/40'
-                    : 'bg-gray-900/60 border-gray-800/30'
-                }`}
-              >
-                <div className="shrink-0 w-10 text-right">
-                  <RankBadge rank={rank} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div
-                    className={`font-black tracking-tight leading-none truncate ${
-                      isFirst
-                        ? 'text-3xl md:text-4xl text-yellow-300'
-                        : isTop3
-                        ? 'text-2xl md:text-3xl text-white'
-                        : 'text-xl md:text-2xl text-gray-200'
-                    }`}
-                  >
-                    {entry.player.name}
+      ) : (() => {
+        // Count how many entries each name has so we can show "Entry #N" when > 1
+        const nameCount: Record<string, number> = {}
+        entries.forEach((e) => { nameCount[e.player.name] = (nameCount[e.player.name] ?? 0) + 1 })
+        return (
+          <div className="max-w-2xl mx-auto space-y-2">
+            <p className="text-center text-gray-400 text-xs mb-4 tracking-wider">TAP A NAME TO SEE THEIR PICKS</p>
+            {entries.map((entry, idx) => {
+              const rank = idx + 1
+              const isFirst = rank === 1
+              const isTop3 = rank <= 3
+              const showEntryNum = nameCount[entry.player.name] > 1
+              return (
+                <button
+                  key={entry.player.id}
+                  onClick={() => setExpandedEntry(entry)}
+                  className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all text-left cursor-pointer hover:border-gray-600 active:scale-[0.99] ${
+                    isFirst
+                      ? 'bg-yellow-900/15 border-yellow-800/40 hover:bg-yellow-900/25'
+                      : isTop3
+                      ? 'bg-gray-800/40 border-gray-700/40'
+                      : 'bg-gray-900/60 border-gray-800/30'
+                  }`}
+                >
+                  <div className="shrink-0 w-10 text-right">
+                    <RankBadge rank={rank} />
                   </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <span
-                    className={`font-black ${
-                      isFirst
-                        ? 'text-5xl md:text-6xl text-yellow-300'
-                        : isTop3
-                        ? 'text-4xl md:text-5xl text-white'
-                        : 'text-3xl md:text-4xl text-gray-300'
-                    }`}
-                  >
-                    {entry.total}
-                  </span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      )}
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={`font-black tracking-tight leading-none truncate ${
+                        isFirst
+                          ? 'text-3xl md:text-4xl text-yellow-300'
+                          : isTop3
+                          ? 'text-2xl md:text-3xl text-white'
+                          : 'text-xl md:text-2xl text-gray-200'
+                      }`}
+                    >
+                      {entry.player.name}
+                    </div>
+                    {showEntryNum && (
+                      <div className="text-xs text-gray-400 font-normal mt-0.5">
+                        Entry #{entry.player.entry_number ?? 1}
+                      </div>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span
+                      className={`font-black ${
+                        isFirst
+                          ? 'text-5xl md:text-6xl text-yellow-300'
+                          : isTop3
+                          ? 'text-4xl md:text-5xl text-white'
+                          : 'text-3xl md:text-4xl text-gray-300'
+                      }`}
+                    >
+                      {entry.total}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Player detail modal */}
-      {expandedEntry && (
-        <PlayerModal
-          entry={expandedEntry}
-          fights={fights}
-          picks={allPicks}
-          onClose={() => setExpandedEntry(null)}
-        />
-      )}
+      {expandedEntry && (() => {
+        const nameCount: Record<string, number> = {}
+        entries.forEach((e) => { nameCount[e.player.name] = (nameCount[e.player.name] ?? 0) + 1 })
+        return (
+          <PlayerModal
+            entry={expandedEntry}
+            fights={fights}
+            picks={allPicks}
+            onClose={() => setExpandedEntry(null)}
+            showEntryNum={nameCount[expandedEntry.player.name] > 1}
+          />
+        )
+      })()}
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { PrizeSplit } from '@/lib/types'
 
 export async function POST(request: NextRequest) {
-  const { id, name, entry_fee, description, expense_cut_pct, prize_splits } = await request.json()
+  const { id, name, entry_fee, description, expense_cut_pct, prize_splits, max_entries } = await request.json()
 
   if (!name?.trim() || !entry_fee?.trim()) {
     return NextResponse.json({ error: 'Name and entry fee are required' }, { status: 400 })
@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     description: description?.trim() || null,
     expense_cut_pct: Math.max(0, Math.min(100, parseInt(expense_cut_pct ?? '50', 10) || 0)),
     prize_splits: splits,
+    max_entries: Math.max(1, parseInt(max_entries ?? '1', 10) || 1),
   }
 
   const supabase = getSupabaseAdmin()
