@@ -2015,7 +2015,7 @@ export default function AdminPage() {
           e.total += p.amount
           if (!p.paid) e.allPaid = false
         }
-        const sortedPlayerTotals = [...playerTotalsMap.values()].sort((a, b) => b.total - a.total)
+        const sortedPlayerTotals = Array.from(playerTotalsMap.values()).sort((a, b) => b.total - a.total)
 
         const unpaidPickEm = pickEmPayouts.filter((p) => !p.paid)
         const unpaidJackpot = jackpotPayouts.filter((p) => !p.paid)
