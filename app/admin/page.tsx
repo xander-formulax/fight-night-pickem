@@ -58,7 +58,7 @@ function ordinal(n: number) {
 
 function parseFee(fee: string) { return parseFloat(fee.replace(/[^0-9.]/g, '')) || 0 }
 
-function calcExpenseRecovery(comps: Competition[], players: Player[], partyCostTarget: number) {
+function calcExpenseRecovery(comps: Competition[], players: Player[], partyCostTarget: number, jackpotContrib: number = 0) {
   let totalExpenseContrib = 0
   const poolData = comps.map((comp) => {
     const paidCount = players.filter((p) => p.competition_id === comp.id && p.paid).length
@@ -69,11 +69,15 @@ function calcExpenseRecovery(comps: Competition[], players: Player[], partyCostT
     totalExpenseContrib += expenseContrib
     return { comp, paidCount, fee, totalPaid, expenseContrib }
   })
+  totalExpenseContrib += jackpotContrib
   const expenseCovered = Math.min(totalExpenseContrib, partyCostTarget)
   const surplus = Math.max(0, totalExpenseContrib - partyCostTarget)
   const expenseStillNeeded = Math.max(0, partyCostTarget - totalExpenseContrib)
+  const jackpotSurplus = totalExpenseContrib > 0 ? (jackpotContrib / totalExpenseContrib) * surplus : 0
   return {
     totalExpenseContrib,
+    jackpotContrib,
+    jackpotSurplus,
     expenseCovered,
     surplus,
     expenseStillNeeded,
@@ -575,13 +579,28 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
 
         {/* Results */}
         {simRan && results.length > 0 && (() => {
-          // Compute cross-pool expense recovery
-          let totalExpContrib = 0
+          // Expense recovery — pick'em
+          const simAvgExpCutPct = competitions.length > 0
+            ? competitions.reduce((s, c) => s + (c.expense_cut_pct ?? 50), 0) / competitions.length / 100
+            : 0.5
+          let pickEmExpContrib = 0
           competitions.forEach(c => {
             const cnt = players.filter(p => p.competition_id === c.id).length
-            totalExpContrib += cnt * parseFee(c.entry_fee) * ((c.expense_cut_pct ?? 50) / 100)
+            pickEmExpContrib += cnt * parseFee(c.entry_fee) * ((c.expense_cut_pct ?? 50) / 100)
           })
+          // Jackpot expense contribution (new entries only, not rollover)
+          const simJackpotEntryRevenue: Record<string, number> = {}
+          jackpotFights.forEach(fight => {
+            simJackpotEntryRevenue[fight.id] = players.filter(p => fight.id in p.jackpotBets).length * effectiveFee
+          })
+          const jackpotExpContrib = Object.values(simJackpotEntryRevenue).reduce((s, r) => s + r * simAvgExpCutPct, 0)
+          const totalExpContrib = pickEmExpContrib + jackpotExpContrib
           const surplus = partyCostTarget > 0 ? Math.max(0, totalExpContrib - partyCostTarget) : 0
+          const expenseCovered = partyCostTarget > 0 ? Math.min(totalExpContrib, partyCostTarget) : totalExpContrib
+          const jackpotSurplus = totalExpContrib > 0 ? (jackpotExpContrib / totalExpContrib) * surplus : 0
+
+          // Jackpot pots after expense cut (track for summary)
+          let simJackpotTotalPayouts = 0
 
           return (
             <div className="space-y-6">
@@ -612,13 +631,16 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                       {jackpotFights.map(fight => {
                         const result = results.find(r => r.fight_id === fight.id)
                         const entrants = players.filter(p => fight.id in p.jackpotBets)
-                        const pot = entrants.length * effectiveFee + rollover + (fight.jackpot_rollover ?? 0)
+                        const entryRevenue = entrants.length * effectiveFee
+                        const fightExpContrib = entryRevenue * simAvgExpCutPct
+                        const fightSurplus = jackpotExpContrib > 0 ? (fightExpContrib / jackpotExpContrib) * jackpotSurplus : 0
+                        const pot = Math.round(entryRevenue * (1 - simAvgExpCutPct) + rollover + (fight.jackpot_rollover ?? 0) + fightSurplus)
                         const bets = entrants.map(p => ({ player: p, bet: p.jackpotBets[fight.id] }))
                         const winner = result ? findJackpotWinner(bets, result) : null
                         const isDecision = result?.method === 'Decision'
 
                         if (isDecision || !winner) rollover += pot
-                        else rollover = 0
+                        else { simJackpotTotalPayouts += pot; rollover = 0 }
 
                         return (
                           <div key={fight.id} className="bg-gray-900/70 rounded-xl px-4 py-3 border border-yellow-900/30 text-sm">
@@ -630,7 +652,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                               <span className="text-yellow-400 font-black">${pot.toFixed(0)}</span>
                             </div>
                             <div className="mt-1.5 text-xs text-gray-400">
-                              {entrants.length} entries · ${effectiveFee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}
+                              {entrants.length} entries · ${effectiveFee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}{simAvgExpCutPct > 0 ? ` · ${Math.round(simAvgExpCutPct*100)}% expense cut` : ''}
                             </div>
                             {!result ? null : isDecision ? (
                               <p className="mt-1.5 text-xs text-orange-400 font-semibold">Decision — pot rolls over (${pot.toFixed(0)})</p>
@@ -643,8 +665,8 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                                 <span className="text-yellow-400 font-bold">${pot.toFixed(0)}</span>
                                 {result.stopMinute != null && (
                                   <span className="text-gray-400 ml-1.5">
-                                    · stopped at R{result.round} {result.stopMinute - 1}:{result.stopSecond!.toString().padStart(2,'0')}
-                                    , bet was R{winner.jackpotBets[fight.id].round} {winner.jackpotBets[fight.id].minute - 1}:{winner.jackpotBets[fight.id].second.toString().padStart(2,'0')}
+                                    · stopped R{result.round} {result.stopMinute - 1}:{result.stopSecond!.toString().padStart(2,'0')}
+                                    , bet R{winner.jackpotBets[fight.id].round} {winner.jackpotBets[fight.id].minute - 1}:{winner.jackpotBets[fight.id].second.toString().padStart(2,'0')}
                                   </span>
                                 )}
                               </p>
@@ -722,6 +744,44 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                   </div>
                 )
               })}
+
+              {/* Simulation summary */}
+              {(() => {
+                const pickEmRevenueSim = competitions.reduce((s, c) => s + players.filter(p => p.competition_id === c.id).length * parseFee(c.entry_fee), 0)
+                const jackpotRevenueSim = jackpotFights.reduce((s, fight) => s + players.filter(p => fight.id in p.jackpotBets).length * effectiveFee, 0)
+                const totalRevenueSim = pickEmRevenueSim + jackpotRevenueSim
+                const pickEmPayoutsSim = competitions.reduce((total, comp) => {
+                  const compPlayers = players.filter(p => p.competition_id === comp.id)
+                  const fee = parseFee(comp.entry_fee)
+                  const expCut = (comp.expense_cut_pct ?? 50) / 100
+                  const compExpContrib = compPlayers.length * fee * expCut
+                  const compSurplus = totalExpContrib > 0 ? (compExpContrib / totalExpContrib) * surplus : 0
+                  const prizePool = compPlayers.length * fee * (1 - expCut) + compSurplus
+                  return total + (comp.prize_splits ?? []).reduce((s, split) => s + prizePool * split.pct / 100, 0)
+                }, 0)
+                const totalPayoutsSim = pickEmPayoutsSim + simJackpotTotalPayouts
+                return (
+                  <div className="bg-yellow-950/30 border border-yellow-800/40 rounded-xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-yellow-700 uppercase tracking-widest mb-1">Total Money In</p>
+                      <p className="text-white font-black text-lg">${totalRevenueSim.toFixed(0)}</p>
+                      <p className="text-yellow-800 text-xs mt-0.5">Pick&apos;em ${pickEmRevenueSim.toFixed(0)} · Jackpot ${jackpotRevenueSim.toFixed(0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-yellow-700 uppercase tracking-widest mb-1">Expense Cut</p>
+                      <p className="text-orange-400 font-black text-lg">${expenseCovered.toFixed(0)}</p>
+                      {partyCostTarget > 0 && (
+                        <p className="text-yellow-800 text-xs mt-0.5">of ${partyCostTarget} target · {surplus > 0 ? `$${surplus.toFixed(0)} surplus back` : 'not covered'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-yellow-700 uppercase tracking-widest mb-1">Total Payouts</p>
+                      <p className="text-green-400 font-black text-lg">${totalPayoutsSim.toFixed(0)}</p>
+                      <p className="text-yellow-800 text-xs mt-0.5">Pick&apos;em ${pickEmPayoutsSim.toFixed(0)} · Jackpot ${simJackpotTotalPayouts.toFixed(0)}</p>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )
         })()}
@@ -1254,7 +1314,17 @@ export default function AdminPage() {
   const paidCount = players.filter((p) => p.paid).length
   const activatedCount = players.filter((p) => p.activated).length
 
-  const expenseRecovery = calcExpenseRecovery(competitions, players, partyCostTarget)
+  const avgJackpotExpCutPct = competitions.length > 0
+    ? competitions.reduce((s, c) => s + (c.expense_cut_pct ?? 50), 0) / competitions.length / 100
+    : 0.5
+  const jackpotExpenseContrib = fights
+    .filter((f) => f.stoppage_bet_open)
+    .reduce((sum, fight) => {
+      const activated = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated).length
+      const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+      return sum + activated * fee * avgJackpotExpCutPct
+    }, 0)
+  const expenseRecovery = calcExpenseRecovery(competitions, players, partyCostTarget, jackpotExpenseContrib)
 
   function getExistingExpenseCovered(excludeCompId?: string) {
     return Math.min(
@@ -2215,13 +2285,19 @@ export default function AdminPage() {
             })[0]
           if (!winnerBet) continue
           const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+          const fightRevenue = fightBets.length * fee
+          const fightExpContrib = fightRevenue * avgJackpotExpCutPct
+          const fightSurplus = expenseRecovery.jackpotContrib > 0
+            ? (fightExpContrib / expenseRecovery.jackpotContrib) * expenseRecovery.jackpotSurplus
+            : 0
+          const pot = Math.round(fightRevenue * (1 - avgJackpotExpCutPct) + (fight.jackpot_rollover ?? 0) + fightSurplus)
           const m = winnerBet.minute_pick - 1
           const s = String(winnerBet.second_pick).padStart(2, '0')
           jackpotPayouts.push({
             betId: winnerBet.id,
             playerName: players.find((p) => p.id === winnerBet.player_id)?.name ?? 'Unknown',
             label: `Fight ${fight.fight_number} Jackpot — R${winnerBet.round_pick} ${m}:${s}`,
-            amount: fightBets.length * fee + (fight.jackpot_rollover ?? 0),
+            amount: pot,
             paid: !!(winnerBet.jackpot_paid),
           })
         }
@@ -2254,6 +2330,17 @@ export default function AdminPage() {
         const totalOwed = [...unpaidPickEm, ...unpaidJackpot].reduce((s, p) => s + p.amount, 0)
         const allPaid = unpaidPickEm.length === 0 && unpaidJackpot.length === 0
 
+        // End-of-night summary numbers
+        const pickEmRevenue = expenseRecovery.poolData.reduce((s, d) => s + d.totalPaid, 0)
+        const jackpotRevenue = fights.filter(f => f.stoppage_bet_open).reduce((sum, fight) => {
+          const activated = stoppageBets.filter(b => b.fight_id === fight.id && b.activated).length
+          const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+          return sum + activated * fee + (fight.jackpot_rollover ?? 0)
+        }, 0)
+        const totalRevenue = pickEmRevenue + jackpotRevenue
+        const expenseCut = expenseRecovery.expenseCovered
+        const totalPayouts = [...pickEmPayouts, ...jackpotPayouts].reduce((s, p) => s + p.amount, 0)
+
         return (
           <section className="mb-10">
             <div className="flex items-center justify-between mb-4">
@@ -2271,6 +2358,40 @@ export default function AdminPage() {
                 </div>
               )}
               {allPaid && <span className="text-gray-400 text-sm font-semibold">All paid ✓</span>}
+            </div>
+
+            {/* End-of-night summary */}
+            <div className="bg-gray-900/80 rounded-xl p-5 mb-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Total Money In</p>
+                <p className="text-white font-black text-xl">${totalRevenue.toLocaleString()}</p>
+                <p className="text-gray-400 text-xs mt-0.5">
+                  Pick&apos;em ${pickEmRevenue.toFixed(0)} · Jackpot ${jackpotRevenue.toFixed(0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Expense Cut</p>
+                <p className="text-orange-400 font-black text-xl">${expenseCut.toFixed(0)}</p>
+                {partyCostTarget > 0 && (
+                  <p className="text-gray-400 text-xs mt-0.5">
+                    of ${partyCostTarget} target · {expenseCut >= partyCostTarget ? '✓ covered' : `$${(partyCostTarget - expenseCut).toFixed(0)} short`}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Total Payouts</p>
+                <p className="text-green-400 font-black text-xl">${totalPayouts.toLocaleString()}</p>
+                <p className="text-gray-400 text-xs mt-0.5">
+                  Pick&apos;em ${pickEmPayouts.reduce((s,p)=>s+p.amount,0).toFixed(0)} · Jackpot ${jackpotPayouts.reduce((s,p)=>s+p.amount,0).toFixed(0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Still Owed</p>
+                <p className={`font-black text-xl ${allPaid ? 'text-gray-400' : 'text-yellow-400'}`}>
+                  ${totalOwed.toLocaleString()}
+                </p>
+                <p className="text-gray-400 text-xs mt-0.5">{allPaid ? 'Everyone paid ✓' : `${unpaidPickEm.length + unpaidJackpot.length} unpaid`}</p>
+              </div>
             </div>
 
             {/* Player totals summary */}
