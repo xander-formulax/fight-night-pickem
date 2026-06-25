@@ -349,8 +349,12 @@ type SimMethod = 'KO/TKO' | 'Submission' | 'Decision'
 interface SimPlayer {
   id: string; name: string; competition_id: string
   picks: Record<string, { winner_pick: string; method_pick: SimMethod; round_pick: number | null }>
+  jackpotBets: Record<string, { round: number; minute: number; second: number }> // fight_id → bet
 }
-interface SimResult { fight_id: string; fight_number: number; winner: string; method: SimMethod; round: number | null }
+interface SimResult {
+  fight_id: string; fight_number: number; winner: string; method: SimMethod; round: number | null
+  stopMinute: number | null; stopSecond: number | null // null for decisions
+}
 
 const SIM_NAMES = [
   'Alex Johnson','Sam Williams','Jordan Smith','Casey Brown','Morgan Davis',
@@ -385,13 +389,32 @@ function simCalcTotal(player: SimPlayer, results: SimResult[], fights: Fight[]):
   }, 0)
 }
 
+// Price Is Right: closest bet (in total seconds) that doesn't exceed actual stoppage
+function findJackpotWinner(
+  bets: Array<{ player: SimPlayer; bet: { round: number; minute: number; second: number } }>,
+  result: SimResult
+): SimPlayer | null {
+  if (result.round == null || result.stopMinute == null || result.stopSecond == null) return null
+  const actualSecs = (result.round - 1) * 300 + (result.stopMinute - 1) * 60 + result.stopSecond
+  let bestSecs = -1
+  let winner: SimPlayer | null = null
+  for (const { player, bet } of bets) {
+    const betSecs = (bet.round - 1) * 300 + (bet.minute - 1) * 60 + bet.second
+    if (betSecs <= actualSecs && betSecs > bestSecs) { bestSecs = betSecs; winner = player }
+  }
+  return winner
+}
+
 function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
   competitions: Competition[]; fights: Fight[]; partyCostTarget: number; onExit: () => void
 }) {
   const [counts, setCounts] = useState<Record<string, string>>({})
+  const [jackpotRate, setJackpotRate] = useState(60) // % of players who enter each jackpot
   const [players, setPlayers] = useState<SimPlayer[]>([])
   const [results, setResults] = useState<SimResult[]>([])
   const [simRan, setSimRan] = useState(false)
+
+  const jackpotFights = fights.filter(f => f.stoppage_bet_open)
 
   function generatePlayers() {
     const pool = [...SIM_NAMES].sort(() => Math.random() - 0.5)
@@ -408,7 +431,17 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
           const method = simRand(SIM_METHODS)
           picks[fight.id] = { winner_pick: winner, method_pick: method, round_pick: method !== 'Decision' ? simRandInt(1, fight.rounds) : null }
         })
-        newPlayers.push({ id: `sim-${comp.id}-${i}`, name, competition_id: comp.id, picks })
+        const jackpotBets: SimPlayer['jackpotBets'] = {}
+        jackpotFights.forEach(fight => {
+          if (Math.random() * 100 < jackpotRate) {
+            jackpotBets[fight.id] = {
+              round: simRandInt(1, fight.rounds),
+              minute: simRandInt(1, 5),
+              second: simRandInt(0, 59),
+            }
+          }
+        })
+        newPlayers.push({ id: `sim-${comp.id}-${i}`, name, competition_id: comp.id, picks, jackpotBets })
       }
     })
     setPlayers(newPlayers)
@@ -421,7 +454,12 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
       const aWins = simWins(fight.odds_a, fight.odds_b)
       const winner = aWins ? fight.fighter_a : fight.fighter_b
       const method = simRand(SIM_METHODS)
-      return { fight_id: fight.id, fight_number: fight.fight_number, winner, method, round: method !== 'Decision' ? simRandInt(1, fight.rounds) : null }
+      const round = method !== 'Decision' ? simRandInt(1, fight.rounds) : null
+      return {
+        fight_id: fight.id, fight_number: fight.fight_number, winner, method, round,
+        stopMinute: round != null ? simRandInt(1, 5) : null,
+        stopSecond: round != null ? simRandInt(0, 59) : null,
+      }
     })
     setResults(newResults)
     setSimRan(true)
@@ -468,6 +506,22 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                 </div>
               ))}
             </div>
+            {jackpotFights.length > 0 && (
+              <div className="mb-4 bg-yellow-950/30 border border-yellow-800/40 rounded-xl px-4 py-3 flex items-center gap-4">
+                <div>
+                  <p className="text-yellow-300 text-xs font-bold uppercase tracking-wider">Jackpot participation</p>
+                  <p className="text-yellow-600 text-xs mt-0.5">{jackpotFights.length} jackpot fight{jackpotFights.length > 1 ? 's' : ''} · ${jackpotFights.map(f => f.stoppage_bet_fee ?? '20').join(', ')} entry</p>
+                </div>
+                <div className="flex items-center gap-3 ml-auto">
+                  <input
+                    type="range" min={0} max={100} value={jackpotRate}
+                    onChange={e => setJackpotRate(parseInt(e.target.value))}
+                    className="w-28 accent-yellow-500"
+                  />
+                  <span className="text-yellow-300 font-black text-sm w-10 text-right">{jackpotRate}%</span>
+                </div>
+              </div>
+            )}
             <button
               onClick={generatePlayers}
               disabled={totalCount === 0}
@@ -516,10 +570,71 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                       <span className="text-gray-400 mr-1.5">F{res.fight_number}</span>
                       <span className="text-white font-bold">{res.winner}</span>
                       <span className="text-orange-400 ml-1.5">{res.method}{res.round != null ? ` R${res.round}` : ''}</span>
+                      {res.stopMinute != null && res.stopSecond != null && (
+                        <span className="text-yellow-600 ml-1.5">{res.stopMinute - 1}:{res.stopSecond.toString().padStart(2,'0')}</span>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
+
+              {/* Jackpot results */}
+              {jackpotFights.length > 0 && (() => {
+                let rollover = 0
+                return (
+                  <div>
+                    <p className="text-xs text-yellow-700 font-bold uppercase tracking-widest mb-3">Jackpot Results</p>
+                    <div className="space-y-2">
+                      {jackpotFights.map(fight => {
+                        const result = results.find(r => r.fight_id === fight.id)
+                        const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+                        const entrants = players.filter(p => fight.id in p.jackpotBets)
+                        const pot = entrants.length * fee + rollover + (fight.jackpot_rollover ?? 0)
+                        const bets = entrants.map(p => ({ player: p, bet: p.jackpotBets[fight.id] }))
+                        const winner = result ? findJackpotWinner(bets, result) : null
+                        const isDecision = result?.method === 'Decision'
+
+                        if (isDecision || !winner) rollover += pot
+                        else rollover = 0
+
+                        return (
+                          <div key={fight.id} className="bg-gray-900/70 rounded-xl px-4 py-3 border border-yellow-900/30 text-sm">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-yellow-500 font-bold text-xs uppercase tracking-wider mr-2">F{fight.fight_number} Jackpot</span>
+                                <span className="text-gray-300">{fight.fighter_a} vs {fight.fighter_b}</span>
+                              </div>
+                              <span className="text-yellow-400 font-black">${pot.toFixed(0)}</span>
+                            </div>
+                            <div className="mt-1.5 text-xs text-gray-400">
+                              {entrants.length} entries · ${fee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}
+                            </div>
+                            {!result ? null : isDecision ? (
+                              <p className="mt-1.5 text-xs text-orange-400 font-semibold">Decision — pot rolls over (${pot.toFixed(0)})</p>
+                            ) : entrants.length === 0 ? (
+                              <p className="mt-1.5 text-xs text-orange-400 font-semibold">No entries — pot rolls over</p>
+                            ) : winner ? (
+                              <p className="mt-1.5 text-xs">
+                                <span className="text-green-400 font-bold">{winner.name}</span>
+                                <span className="text-gray-400"> wins </span>
+                                <span className="text-yellow-400 font-bold">${pot.toFixed(0)}</span>
+                                {result.stopMinute != null && (
+                                  <span className="text-gray-400 ml-1.5">
+                                    · stopped at R{result.round} {result.stopMinute - 1}:{result.stopSecond!.toString().padStart(2,'0')}
+                                    , bet was R{winner.jackpotBets[fight.id].round} {winner.jackpotBets[fight.id].minute - 1}:{winner.jackpotBets[fight.id].second.toString().padStart(2,'0')}
+                                  </span>
+                                )}
+                              </p>
+                            ) : (
+                              <p className="mt-1.5 text-xs text-orange-400 font-semibold">No valid bet ≤ stoppage — pot rolls over</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Leaderboard per competition */}
               {competitions.map(comp => {
