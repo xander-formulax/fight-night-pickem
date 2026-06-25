@@ -113,10 +113,8 @@ export default function PlayPage() {
   const [error, setError] = useState('')
 
   // Wizard flow state
-  const [flowStep, setFlowStep] = useState<'setup' | number | 'tiebreaker' | 'review'>('setup')
+  const [flowStep, setFlowStep] = useState<'setup' | number | 'review'>('setup')
   const [showConfirmSheet, setShowConfirmSheet] = useState(false)
-  const [tieMin, setTieMin] = useState('')
-  const [tieSec, setTieSec] = useState('')
 
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
 
@@ -341,10 +339,6 @@ export default function PlayPage() {
           : null,
     }))
 
-    const tiebreaker = tieMin || tieSec
-      ? `${parseInt(tieMin || '0', 10)}:${(parseInt(tieSec || '0', 10)).toString().padStart(2, '0')}`
-      : ''
-
     const res = await fetch('/api/submit-picks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -353,7 +347,6 @@ export default function PlayPage() {
         competition_id: selectedCompetitionId,
         picks: picksToSubmit,
         entry_number: entryNumber,
-        tiebreaker,
       }),
     })
 
@@ -379,8 +372,6 @@ export default function PlayPage() {
     setIsAddingEntry(false)
     setShowConfirmSheet(false)
     setFlowStep('setup')
-    setTieMin('')
-    setTieSec('')
     setSubmitting(false)
     await loadEntryData(newEntry)
   }
@@ -708,10 +699,8 @@ export default function PlayPage() {
                         setName(viewingPlayer?.name ?? '')
                         setSelectedCompetitionId(comp.id)
                         resetPicksToEmpty(fights)
-                        setTieMin('')
-                        setTieSec('')
                         setError('')
-                        setFlowStep(fights.some((f) => f.status === 'upcoming') ? 0 : 'tiebreaker')
+                        setFlowStep(fights.some((f) => f.status === 'upcoming') ? 0 : 'review')
                         setIsAddingEntry(true)
                       }}
                       className="w-full flex items-center justify-between bg-gray-800/70 hover:bg-gray-700/70 border border-gray-700 rounded-xl px-5 py-3 transition-colors"
@@ -733,7 +722,6 @@ export default function PlayPage() {
   const upcomingFights = fights.filter((f) => f.status === 'upcoming')
   const wizComp = competitions.find((c) => c.id === selectedCompetitionId)
   const wizEntryNum = storedEntries.filter((e) => e.competition_id === selectedCompetitionId).length + 1
-  const mainEvent = fights.length > 0 ? fights.reduce((a, b) => (b.fight_number > a.fight_number ? b : a)) : null
 
   function cancelAdd() {
     setIsAddingEntry(false)
@@ -744,11 +732,11 @@ export default function PlayPage() {
     setError('')
     if (!name.trim()) { setError('Please enter your name.'); return }
     if (!selectedCompetitionId) { setError('Please choose a prize pool.'); return }
-    setFlowStep(upcomingFights.length > 0 ? 0 : 'tiebreaker')
+    setFlowStep(upcomingFights.length > 0 ? 0 : 'review')
   }
   function nextFromFight(i: number) {
     setError('')
-    setFlowStep(i < upcomingFights.length - 1 ? i + 1 : 'tiebreaker')
+    setFlowStep(i < upcomingFights.length - 1 ? i + 1 : 'review')
   }
   function backFromFight(i: number) {
     setError('')
@@ -955,55 +943,13 @@ export default function PlayPage() {
                         complete ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                       }`}
                     >
-                      {idx < upcomingFights.length - 1 ? 'Next Fight →' : 'Continue →'}
+                      {idx < upcomingFights.length - 1 ? 'Next Fight →' : 'Review →'}
                     </button>
                   </div>
                 </div>
               </div>
             )
           })()}
-
-          {/* STEP: tiebreaker */}
-          {flowStep === 'tiebreaker' && (
-            <div className="space-y-5">
-              <div className="text-center">
-                <h3 className="text-xl font-black text-white">Tiebreaker</h3>
-                <p className="text-gray-300 text-sm mt-1">Predict the main event's total fight time.</p>
-                {mainEvent && (
-                  <p className="text-gray-400 text-xs mt-1">{mainEvent.fighter_a} vs {mainEvent.fighter_b}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
-                <div className="text-center">
-                  <label className="block text-sm font-bold text-gray-300 mb-2">Minutes</label>
-                  <input
-                    type="number" inputMode="numeric" min={0} max={25} value={tieMin}
-                    onChange={(e) => setTieMin(e.target.value)}
-                    placeholder="0"
-                    className="w-full bg-gray-800/70 border-2 border-gray-700/80 rounded-2xl px-3 py-5 text-white text-4xl font-black text-center placeholder-gray-600 focus:outline-none focus:border-yellow-500"
-                  />
-                </div>
-                <div className="text-center">
-                  <label className="block text-sm font-bold text-gray-300 mb-2">Seconds</label>
-                  <input
-                    type="number" inputMode="numeric" min={0} max={59} value={tieSec}
-                    onChange={(e) => setTieSec(e.target.value)}
-                    placeholder="0"
-                    className="w-full bg-gray-800/70 border-2 border-gray-700/80 rounded-2xl px-3 py-5 text-white text-4xl font-black text-center placeholder-gray-600 focus:outline-none focus:border-yellow-500"
-                  />
-                </div>
-              </div>
-              <p className="text-center text-gray-500 text-xs">Used only to break ties on the leaderboard.</p>
-
-              <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-40">
-                <div className="max-w-3xl mx-auto flex gap-3">
-                  <button type="button" onClick={() => { setError(''); setFlowStep(upcomingFights.length > 0 ? upcomingFights.length - 1 : 'setup') }} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
-                  <button type="button" onClick={() => { setError(''); setFlowStep('review') }} className="flex-1 py-3.5 rounded-xl font-black text-lg bg-red-600 hover:bg-red-700 text-white transition-colors">Review →</button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* STEP: review */}
           {flowStep === 'review' && (
@@ -1029,23 +975,13 @@ export default function PlayPage() {
                     </div>
                   )
                 })}
-
-                <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-gray-400 text-xs">Tiebreaker — main event time</p>
-                    <p className="text-white font-bold">
-                      {(tieMin || tieSec) ? `${parseInt(tieMin || '0', 10)}:${parseInt(tieSec || '0', 10).toString().padStart(2, '0')}` : <span className="text-gray-500">Not set</span>}
-                    </p>
-                  </div>
-                  <button type="button" onClick={() => { setError(''); setFlowStep('tiebreaker') }} className="text-red-400 hover:text-red-300 text-sm font-bold shrink-0">Edit</button>
-                </div>
               </div>
 
               {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
 
               <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-40">
                 <div className="max-w-3xl mx-auto flex gap-3">
-                  <button type="button" onClick={() => { setError(''); setFlowStep('tiebreaker') }} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
+                  <button type="button" onClick={() => { setError(''); setFlowStep(upcomingFights.length > 0 ? upcomingFights.length - 1 : 'setup') }} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
                   <button type="button" onClick={() => setShowConfirmSheet(true)} className="flex-1 py-3.5 rounded-xl font-black text-lg bg-green-600 hover:bg-green-500 text-white transition-colors">Submit My Picks</button>
                 </div>
               </div>

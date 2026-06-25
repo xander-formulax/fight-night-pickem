@@ -43,9 +43,6 @@ function PlayerModal({
             <p className="text-gray-300 text-sm mt-0.5">
               {showEntryNum ? `Entry #${entry.player.entry_number ?? 1}` : (entry.player.competition_id ? '' : entry.player.tier)}
             </p>
-            {entry.player.tiebreaker && (
-              <p className="text-gray-400 text-xs mt-0.5">🎯 Tiebreaker {entry.player.tiebreaker}</p>
-            )}
           </div>
           <div className="text-right">
             <div className="text-4xl font-black text-green-400">{entry.total}</div>
@@ -161,27 +158,6 @@ function ordinal(n: number) {
   if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd'; return `${n}th`
 }
 
-// Tiebreaker: player predicts the main event's total fight time as "M:SS".
-function parseTiebreakerSecs(tb: string | null | undefined): number | null {
-  if (!tb) return null
-  const m = tb.match(/^(\d+):(\d{1,2})$/)
-  if (!m) return null
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10)
-}
-
-// Actual total seconds the main event (highest fight number) lasted, once resolved.
-function mainEventActualSecs(fights: Fight[]): number | null {
-  if (fights.length === 0) return null
-  const main = fights.reduce((a, b) => (b.fight_number > a.fight_number ? b : a))
-  if (main.status !== 'complete' || !main.result_winner) return null
-  if (main.result_method === 'Decision') return main.rounds * 300
-  if (main.stoppage_actual_round != null) {
-    return (main.stoppage_actual_round - 1) * 300 + (main.stoppage_actual_minute ?? 0) * 60 + (main.stoppage_actual_second ?? 0)
-  }
-  if (main.result_round != null) return (main.result_round - 1) * 300 + 150  // no precise time entered — approx mid-round
-  return null
-}
-
 function calcPrizePool(
   comp: Competition,
   allComps: Competition[],
@@ -219,7 +195,7 @@ export default function LeaderboardPage() {
   const [expandedEntry, setExpandedEntry] = useState<PlayerWithScores | null>(null)
 
   const buildEntries = useCallback(
-    (players: Player[], scores: Score[], compId: string, tieTargetSecs: number | null): PlayerWithScores[] => {
+    (players: Player[], scores: Score[], compId: string): PlayerWithScores[] => {
       const filtered = players.filter((p) => p.competition_id === compId)
       const map: Record<string, PlayerWithScores> = {}
       filtered.forEach((p) => { map[p.id] = { player: p, scores: {}, total: 0 } })
@@ -229,16 +205,7 @@ export default function LeaderboardPage() {
           map[s.player_id].total += s.fight_total
         }
       })
-      return Object.values(map).sort((a, b) => {
-        if (b.total !== a.total) return b.total - a.total
-        // Tie: closest tiebreaker prediction to the actual main-event time wins.
-        if (tieTargetSecs == null) return 0
-        const aSecs = parseTiebreakerSecs(a.player.tiebreaker)
-        const bSecs = parseTiebreakerSecs(b.player.tiebreaker)
-        const aDiff = aSecs == null ? Infinity : Math.abs(aSecs - tieTargetSecs)
-        const bDiff = bSecs == null ? Infinity : Math.abs(bSecs - tieTargetSecs)
-        return aDiff - bDiff
-      })
+      return Object.values(map).sort((a, b) => b.total - a.total)
     },
     []
   )
@@ -285,8 +252,7 @@ export default function LeaderboardPage() {
   }, [loadData])
 
   const activeComp = competitions.find((c) => c.id === activeCompId)
-  const tieTargetSecs = mainEventActualSecs(fights)
-  const entries = activeCompId ? buildEntries(allPlayers, allScores, activeCompId, tieTargetSecs) : []
+  const entries = activeCompId ? buildEntries(allPlayers, allScores, activeCompId) : []
 
   return (
     <div className="min-h-screen p-4 md:p-8">
