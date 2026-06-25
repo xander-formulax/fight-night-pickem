@@ -38,6 +38,19 @@ function winnerPts(odds: number): number {
 
 const METHOD_PTS: Record<string, number> = { 'KO/TKO': 100, Submission: 150, Decision: 50 }
 
+const METHOD_META: { value: Method; label: string; icon: string }[] = [
+  { value: 'KO/TKO', label: 'KO/TKO', icon: '👊' },
+  { value: 'Submission', label: 'Sub', icon: '🔒' },
+  { value: 'Decision', label: 'Decision', icon: '📋' },
+]
+
+function isPickComplete(pick: PickState | undefined): boolean {
+  if (!pick?.winner_pick) return false
+  if (!pick.method_pick) return false
+  if (pick.method_pick !== 'Decision' && !pick.round_pick) return false
+  return true
+}
+
 function calcPotential(fight: Fight, pick: PickState | undefined) {
   if (!pick?.winner_pick) return null
   const odds = pick.winner_pick === fight.fighter_a ? fight.odds_a : fight.odds_b
@@ -98,6 +111,12 @@ export default function PlayPage() {
   const [selectedCompetitionId, setSelectedCompetitionId] = useState('')
   const [picks, setPicks] = useState<Record<string, PickState>>({})
   const [error, setError] = useState('')
+
+  // Wizard flow state
+  const [flowStep, setFlowStep] = useState<'setup' | number | 'tiebreaker' | 'review'>('setup')
+  const [showConfirmSheet, setShowConfirmSheet] = useState(false)
+  const [tieMin, setTieMin] = useState('')
+  const [tieSec, setTieSec] = useState('')
 
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
 
@@ -280,35 +299,30 @@ export default function PlayPage() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit() {
     setError('')
 
     if (!selectedCompetitionId) {
       setError('Please select a prize pool to enter.')
+      setShowConfirmSheet(false)
       return
     }
 
     const upcomingFights = fights.filter((f) => f.status === 'upcoming')
 
-    for (const fight of upcomingFights) {
-      const pick = picks[fight.id]
-      if (!pick?.winner_pick) {
-        setError(`Please pick a winner for Fight ${fight.fight_number}: ${fight.fighter_a} vs ${fight.fighter_b}`)
-        return
-      }
-      if (!pick?.method_pick) {
-        setError(`Please pick a method for Fight ${fight.fight_number}: ${fight.fighter_a} vs ${fight.fighter_b}`)
-        return
-      }
-      if (pick.method_pick !== 'Decision' && !pick.round_pick) {
-        setError(`Please pick a round for Fight ${fight.fight_number}: ${fight.fighter_a} vs ${fight.fighter_b}`)
+    for (let i = 0; i < upcomingFights.length; i++) {
+      const fight = upcomingFights[i]
+      if (!isPickComplete(picks[fight.id])) {
+        setError(`Finish your picks for Fight ${fight.fight_number}: ${fight.fighter_a} vs ${fight.fighter_b}`)
+        setShowConfirmSheet(false)
+        setFlowStep(i)
         return
       }
     }
 
     if (upcomingFights.length === 0) {
       setError('No open fights available for picks.')
+      setShowConfirmSheet(false)
       return
     }
 
@@ -327,6 +341,10 @@ export default function PlayPage() {
           : null,
     }))
 
+    const tiebreaker = tieMin || tieSec
+      ? `${parseInt(tieMin || '0', 10)}:${(parseInt(tieSec || '0', 10)).toString().padStart(2, '0')}`
+      : ''
+
     const res = await fetch('/api/submit-picks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -335,6 +353,7 @@ export default function PlayPage() {
         competition_id: selectedCompetitionId,
         picks: picksToSubmit,
         entry_number: entryNumber,
+        tiebreaker,
       }),
     })
 
@@ -343,6 +362,7 @@ export default function PlayPage() {
     if (!res.ok) {
       setError(result.error ?? 'Failed to submit picks. Please try again.')
       setSubmitting(false)
+      setShowConfirmSheet(false)
       return
     }
 
@@ -357,6 +377,10 @@ export default function PlayPage() {
     setStoredEntries(updatedEntries)
     setActiveEntryIdx(updatedEntries.length - 1)
     setIsAddingEntry(false)
+    setShowConfirmSheet(false)
+    setFlowStep('setup')
+    setTieMin('')
+    setTieSec('')
     setSubmitting(false)
     await loadEntryData(newEntry)
   }
@@ -684,6 +708,10 @@ export default function PlayPage() {
                         setName(viewingPlayer?.name ?? '')
                         setSelectedCompetitionId(comp.id)
                         resetPicksToEmpty(fights)
+                        setTieMin('')
+                        setTieSec('')
+                        setError('')
+                        setFlowStep(fights.some((f) => f.status === 'upcoming') ? 0 : 'tiebreaker')
                         setIsAddingEntry(true)
                       }}
                       className="w-full flex items-center justify-between bg-gray-800/70 hover:bg-gray-700/70 border border-gray-700 rounded-xl px-5 py-3 transition-colors"
@@ -701,24 +729,45 @@ export default function PlayPage() {
     )
   }
 
-  // ── Entry form ────────────────────────────────────────────────────────────
+  // ── Entry form (wizard) ─────────────────────────────────────────────────────
   const upcomingFights = fights.filter((f) => f.status === 'upcoming')
-  const totalPotential = upcomingFights.reduce((sum, f) => sum + (calcPotential(f, picks[f.id])?.total ?? 0), 0)
-  const pickedCount = upcomingFights.filter((f) => picks[f.id]?.winner_pick).length
+  const wizComp = competitions.find((c) => c.id === selectedCompetitionId)
+  const wizEntryNum = storedEntries.filter((e) => e.competition_id === selectedCompetitionId).length + 1
+  const mainEvent = fights.length > 0 ? fights.reduce((a, b) => (b.fight_number > a.fight_number ? b : a)) : null
+
+  function cancelAdd() {
+    setIsAddingEntry(false)
+    setFlowStep('setup')
+    setActiveEntryIdx(Math.max(0, storedEntries.length - 1))
+  }
+  function startPicks() {
+    setError('')
+    if (!name.trim()) { setError('Please enter your name.'); return }
+    if (!selectedCompetitionId) { setError('Please choose a prize pool.'); return }
+    setFlowStep(upcomingFights.length > 0 ? 0 : 'tiebreaker')
+  }
+  function nextFromFight(i: number) {
+    setError('')
+    setFlowStep(i < upcomingFights.length - 1 ? i + 1 : 'tiebreaker')
+  }
+  function backFromFight(i: number) {
+    setError('')
+    if (i > 0) setFlowStep(i - 1)
+    else if (isAddingEntry) cancelAdd()
+    else setFlowStep('setup')
+  }
 
   return (
-    <div className={`max-w-3xl mx-auto px-4 py-8 ${totalPotential > 0 ? 'pb-28' : ''}`}>
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-32">
       <PlayerTabs />
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
         <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
-        {isAddingEntry ? (
+        {isAddingEntry && (
           <p className="text-gray-300 mt-2 text-sm">
-            Adding entry #{storedEntries.filter((e) => e.competition_id === selectedCompetitionId).length + 1} for{' '}
-            <span className="text-white font-semibold">{competitions.find((c) => c.id === selectedCompetitionId)?.name}</span>
+            Adding entry #{wizEntryNum} for{' '}
+            <span className="text-white font-semibold">{wizComp?.name}</span>
           </p>
-        ) : (
-          <p className="text-gray-300 mt-2 text-sm">Submit your picks for tonight's fights</p>
         )}
       </div>
 
@@ -727,279 +776,308 @@ export default function PlayPage() {
           No prize pools are set up yet. Check back soon.
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Player info */}
-          <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 space-y-4">
-            <h2 className="text-lg font-bold text-white">Your Info</h2>
+        <div className="space-y-6">
+          {/* STEP: setup — name + tier cards */}
+          {flowStep === 'setup' && (
+            <>
+              <div className="bg-gray-900/70 backdrop-blur-sm rounded-2xl p-6">
+                <label className="block text-sm font-bold text-gray-200 mb-2">Your Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your full name"
+                  className="w-full bg-gray-800/70 border-2 border-gray-700/80 rounded-xl px-4 py-3.5 text-white text-lg placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                placeholder="Your full name"
-                className="w-full bg-gray-800/70 border border-gray-700/80 rounded-lg px-4 py-2.5 text-white placeholder-gray-400 focus:outline-none focus:border-red-500 transition-colors"
-              />
-            </div>
-
-            {/* Competition selector */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Choose Your Prize Pool
-              </label>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {competitions.map((comp) => {
-                  const usedForComp = storedEntries.filter((e) => e.competition_id === comp.id).length
+                  const used = storedEntries.filter((e) => e.competition_id === comp.id).length
                   const maxEntries = comp.max_entries ?? 1
-                  const isMaxed = usedForComp >= maxEntries
-                  const entryNumIfSelected = usedForComp + 1
-
+                  const isMaxed = used >= maxEntries
+                  const selected = selectedCompetitionId === comp.id
                   return (
-                    <label
+                    <button
                       key={comp.id}
-                      className={`flex flex-col p-4 rounded-xl border-2 transition-all ${
+                      type="button"
+                      disabled={isMaxed}
+                      onClick={() => setSelectedCompetitionId(comp.id)}
+                      className={`relative flex flex-col items-start text-left p-6 rounded-2xl border-2 transition-all ${
                         isMaxed
                           ? 'border-gray-800 opacity-40 cursor-not-allowed'
-                          : selectedCompetitionId === comp.id
-                          ? 'border-red-500 bg-red-900/20 cursor-pointer'
-                          : 'border-gray-700 hover:border-gray-500 cursor-pointer'
+                          : selected
+                          ? 'border-red-500 bg-red-900/30'
+                          : 'border-gray-700 hover:border-gray-500'
                       }`}
                     >
-                      <input
-                        type="radio"
-                        name="competition"
-                        value={comp.id}
-                        checked={selectedCompetitionId === comp.id}
-                        onChange={() => !isMaxed && setSelectedCompetitionId(comp.id)}
-                        disabled={isMaxed}
-                        className="sr-only"
-                      />
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-white font-bold text-lg">{comp.name}</span>
-                        <span className="text-red-400 font-black text-xl">{comp.entry_fee}</span>
-                      </div>
-                      {comp.description && (
-                        <span className="text-gray-400 text-sm mt-1">{comp.description}</span>
+                      {selected && (
+                        <span className="absolute top-4 right-4 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center text-base">✓</span>
                       )}
+                      <span className="text-red-400 font-black text-3xl">{comp.entry_fee}</span>
+                      <span className="text-white font-bold text-lg mt-1">{comp.name}</span>
+                      {comp.description && <span className="text-gray-400 text-sm mt-1">{comp.description}</span>}
                       {maxEntries > 1 && (
-                        <span className={`text-xs mt-1.5 font-semibold ${isMaxed ? 'text-gray-500' : 'text-blue-400'}`}>
-                          {isMaxed ? `Max entries reached (${maxEntries}/${maxEntries})` : `Entry #${entryNumIfSelected} of ${maxEntries} max`}
+                        <span className={`text-xs mt-2 font-semibold ${isMaxed ? 'text-gray-500' : 'text-blue-400'}`}>
+                          {isMaxed ? 'Max entries reached' : `Entry #${used + 1} of ${maxEntries}`}
                         </span>
                       )}
-                      {(comp.prize_splits ?? []).length > 0 && (
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
-                          {(comp.prize_splits ?? []).map((s) => (
-                            <span key={s.place} className="text-xs text-gray-300">
-                              {s.place === 1 ? '1st' : s.place === 2 ? '2nd' : s.place === 3 ? '3rd' : `${s.place}th`}
-                              {': '}<span className="text-green-400 font-semibold">{s.pct}%</span>
-                            </span>
-                          ))}
-                          {(comp.expense_cut_pct ?? 0) > 0 && (
-                            <span className="text-xs text-gray-400">· {comp.expense_cut_pct}% expense cut</span>
-                          )}
-                        </div>
-                      )}
-                    </label>
+                    </button>
                   )
                 })}
               </div>
-            </div>
-          </div>
 
-          {/* Fight picks */}
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-white">Your Picks</h2>
+              {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
 
-            {fights.length === 0 && (
-              <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-8 text-center text-gray-400">
-                Fights not posted yet. Check back soon.
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={startPicks}
+                disabled={!name.trim() || !selectedCompetitionId}
+                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-2xl transition-colors"
+              >
+                Start Picks →
+              </button>
+            </>
+          )}
 
-            {fights.map((fight) => {
-              const pick = picks[fight.id]
-              const isLocked = fight.status === 'locked' || fight.status === 'complete'
-
-              return (
-                <div
-                  key={fight.id}
-                  className={`bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 transition-opacity ${isLocked ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-gray-300 text-xs font-semibold tracking-wider">
-                      FIGHT {fight.fight_number} &bull; {fight.rounds} ROUNDS
-                    </span>
-                    <StatusBadge status={fight.status} />
+          {/* STEP: per-fight pick */}
+          {typeof flowStep === 'number' && upcomingFights[flowStep] && (() => {
+            const idx = flowStep
+            const fight = upcomingFights[idx]
+            const pick = picks[fight.id]
+            const complete = isPickComplete(pick)
+            const winnerChosen = Boolean(pick?.winner_pick)
+            const showRound = pick?.method_pick && pick.method_pick !== 'Decision'
+            const pot = calcPotential(fight, pick)
+            return (
+              <div className="space-y-5">
+                {/* progress */}
+                <div>
+                  <div className="flex items-center justify-center gap-1.5 mb-2">
+                    {upcomingFights.map((f, i) => (
+                      <span key={f.id} className={`h-1.5 rounded-full transition-all ${
+                        i === idx ? 'w-6 bg-red-500' : isPickComplete(picks[f.id]) ? 'w-1.5 bg-green-500' : 'w-1.5 bg-gray-600'
+                      }`} />
+                    ))}
                   </div>
-
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Pick the Winner</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { fighter: fight.fighter_a, odds: fight.odds_a },
-                        { fighter: fight.fighter_b, odds: fight.odds_b },
-                      ].map(({ fighter, odds }) => (
-                        <label
-                          key={fighter}
-                          className={`flex flex-col items-center py-3 px-2 rounded-xl border-2 transition-all ${
-                            isLocked ? 'cursor-not-allowed' : 'cursor-pointer'
-                          } ${
-                            pick?.winner_pick === fighter
-                              ? 'border-red-500 bg-red-900/30'
-                              : 'border-gray-700 hover:border-gray-500'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={`winner_${fight.id}`}
-                            value={fighter}
-                            checked={pick?.winner_pick === fighter}
-                            onChange={() => !isLocked && updatePick(fight.id, 'winner_pick', fighter)}
-                            disabled={isLocked}
-                            className="sr-only"
-                          />
-                          <span className="text-white font-bold text-center text-sm leading-tight">
-                            {fighter}
-                          </span>
-                          <span
-                            className={`text-sm font-bold mt-1 ${odds > 0 ? 'text-green-400' : 'text-gray-400'}`}
-                          >
-                            {formatOdds(odds)}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Pick the Method</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['KO/TKO', 'Submission', 'Decision'] as Method[]).map((method) => (
-                        <label
-                          key={method}
-                          className={`flex items-center justify-center py-2.5 px-2 rounded-xl border-2 text-sm font-semibold transition-all ${
-                            isLocked ? 'cursor-not-allowed' : 'cursor-pointer'
-                          } ${
-                            pick?.method_pick === method
-                              ? 'border-orange-500 bg-orange-900/30 text-white'
-                              : 'border-gray-700 text-gray-300 hover:border-gray-500'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={`method_${fight.id}`}
-                            value={method}
-                            checked={pick?.method_pick === method}
-                            onChange={() => !isLocked && updatePick(fight.id, 'method_pick', method)}
-                            disabled={isLocked}
-                            className="sr-only"
-                          />
-                          {method}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {pick?.method_pick && pick.method_pick !== 'Decision' && (
-                    <div>
-                      <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Pick the Round</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => !isLocked && updatePick(fight.id, 'round_pick', String(r))}
-                            disabled={isLocked}
-                            className={`w-12 h-10 rounded-xl border-2 text-sm font-bold transition-all ${
-                              pick?.round_pick === String(r)
-                                ? 'border-purple-500 bg-purple-900/30 text-white'
-                                : 'border-gray-700 text-gray-300 hover:border-gray-500'
-                            } ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                          >
-                            R{r}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {!isLocked && (() => {
-                    const p = calcPotential(fight, pick)
-                    if (!p) return null
-                    return (
-                      <div className="mt-4 pt-3 border-t border-gray-800">
-                        <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Potential Points</p>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="text-sm">
-                            <span className="text-gray-300">Winner</span>{' '}
-                            <span className="text-green-400 font-bold">+{p.winner}</span>
-                          </span>
-                          {pick?.method_pick && (
-                            <span className="text-sm text-gray-400">
-                              + <span className="text-gray-400">Method</span>{' '}
-                              <span className="text-blue-400 font-bold">+{p.method}</span>
-                            </span>
-                          )}
-                          {pick?.method_pick && pick.method_pick !== 'Decision' && pick.round_pick && (
-                            <span className="text-sm text-gray-400">
-                              + <span className="text-gray-400">Round</span>{' '}
-                              <span className="text-purple-400 font-bold">+{p.round}</span>
-                            </span>
-                          )}
-                          <span className="ml-auto text-white font-black text-xl">+{p.total} pts</span>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {isLocked && (
-                    <p className="mt-3 text-center text-xs font-bold text-yellow-500">
-                      {fight.status === 'locked' ? 'PICKS LOCKED' : 'FIGHT COMPLETE'}
-                    </p>
-                  )}
+                  <p className="text-center text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                    Fight {idx + 1} of {upcomingFights.length} · {fight.rounds} rounds
+                  </p>
                 </div>
-              )
-            })}
-          </div>
 
-          {error && (
-            <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">
-              {error}
+                {/* winner cards (stacked) */}
+                <div className="space-y-3">
+                  {[
+                    { fighter: fight.fighter_a, odds: fight.odds_a },
+                    { fighter: fight.fighter_b, odds: fight.odds_b },
+                  ].map(({ fighter, odds }) => {
+                    const sel = pick?.winner_pick === fighter
+                    const dim = winnerChosen && !sel
+                    return (
+                      <button
+                        key={fighter}
+                        type="button"
+                        onClick={() => updatePick(fight.id, 'winner_pick', fighter)}
+                        className={`w-full flex items-center justify-between px-6 py-6 rounded-2xl border-2 transition-all ${
+                          sel ? 'border-red-500 bg-red-900/30' : dim ? 'border-gray-800 opacity-50' : 'border-gray-700 hover:border-gray-500'
+                        }`}
+                      >
+                        <div className="text-left">
+                          <div className="text-white font-black text-2xl leading-tight">{fighter}</div>
+                          <div className={`text-sm font-bold mt-1 ${odds > 0 ? 'text-green-400' : 'text-gray-400'}`}>{formatOdds(odds)}</div>
+                        </div>
+                        <span className={`w-9 h-9 rounded-full border-2 flex items-center justify-center shrink-0 text-lg ${sel ? 'border-red-500 bg-red-500 text-white' : 'border-gray-600 text-transparent'}`}>✓</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* method (after winner) */}
+                {winnerChosen && (
+                  <div className="grid grid-cols-3 gap-3">
+                    {METHOD_META.map(({ value, label, icon }) => {
+                      const sel = pick?.method_pick === value
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => updatePick(fight.id, 'method_pick', value)}
+                          className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 transition-all ${
+                            sel ? 'border-orange-500 bg-orange-900/30' : 'border-gray-700 hover:border-gray-500'
+                          }`}
+                        >
+                          <span className="text-3xl leading-none">{icon}</span>
+                          <span className={`text-sm font-bold ${sel ? 'text-white' : 'text-gray-300'}`}>{label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* round (after KO/Sub) */}
+                {showRound && (
+                  <div className="flex gap-3 flex-wrap justify-center">
+                    {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => {
+                      const sel = pick?.round_pick === String(r)
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => updatePick(fight.id, 'round_pick', String(r))}
+                          className={`w-14 h-14 rounded-2xl border-2 text-xl font-black transition-all ${
+                            sel ? 'border-purple-500 bg-purple-600 text-white' : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {pot && (
+                  <p className="text-center text-sm text-gray-400">
+                    Potential: <span className="text-white font-black text-lg">+{pot.total}</span> pts
+                  </p>
+                )}
+
+                {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
+
+                {/* sticky nav */}
+                <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-40">
+                  <div className="max-w-3xl mx-auto flex gap-3">
+                    <button type="button" onClick={() => backFromFight(idx)} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
+                    <button
+                      type="button"
+                      onClick={() => nextFromFight(idx)}
+                      disabled={!complete}
+                      className={`flex-1 py-3.5 rounded-xl font-black text-lg transition-colors ${
+                        complete ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {idx < upcomingFights.length - 1 ? 'Next Fight →' : 'Continue →'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* STEP: tiebreaker */}
+          {flowStep === 'tiebreaker' && (
+            <div className="space-y-5">
+              <div className="text-center">
+                <h3 className="text-xl font-black text-white">Tiebreaker</h3>
+                <p className="text-gray-300 text-sm mt-1">Predict the main event's total fight time.</p>
+                {mainEvent && (
+                  <p className="text-gray-400 text-xs mt-1">{mainEvent.fighter_a} vs {mainEvent.fighter_b}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
+                <div className="text-center">
+                  <label className="block text-sm font-bold text-gray-300 mb-2">Minutes</label>
+                  <input
+                    type="number" inputMode="numeric" min={0} max={25} value={tieMin}
+                    onChange={(e) => setTieMin(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-gray-800/70 border-2 border-gray-700/80 rounded-2xl px-3 py-5 text-white text-4xl font-black text-center placeholder-gray-600 focus:outline-none focus:border-yellow-500"
+                  />
+                </div>
+                <div className="text-center">
+                  <label className="block text-sm font-bold text-gray-300 mb-2">Seconds</label>
+                  <input
+                    type="number" inputMode="numeric" min={0} max={59} value={tieSec}
+                    onChange={(e) => setTieSec(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-gray-800/70 border-2 border-gray-700/80 rounded-2xl px-3 py-5 text-white text-4xl font-black text-center placeholder-gray-600 focus:outline-none focus:border-yellow-500"
+                  />
+                </div>
+              </div>
+              <p className="text-center text-gray-500 text-xs">Used only to break ties on the leaderboard.</p>
+
+              <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-40">
+                <div className="max-w-3xl mx-auto flex gap-3">
+                  <button type="button" onClick={() => { setError(''); setFlowStep(upcomingFights.length > 0 ? upcomingFights.length - 1 : 'setup') }} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
+                  <button type="button" onClick={() => { setError(''); setFlowStep('review') }} className="flex-1 py-3.5 rounded-xl font-black text-lg bg-red-600 hover:bg-red-700 text-white transition-colors">Review →</button>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="flex gap-3">
-            {isAddingEntry && (
-              <button
-                type="button"
-                onClick={() => { setIsAddingEntry(false); setActiveEntryIdx(storedEntries.length - 1) }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-            )}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
-            >
-              {submitting ? 'SUBMITTING...' : isAddingEntry ? 'LOCK IN ENTRY' : 'LOCK IN MY PICKS'}
-            </button>
-          </div>
-        </form>
+          {/* STEP: review */}
+          {flowStep === 'review' && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <h3 className="text-xl font-black text-white">Review Your Picks</h3>
+                <p className="text-gray-300 text-sm mt-1">{name} · {wizComp?.name}{wizEntryNum > 1 ? ` · Entry #${wizEntryNum}` : ''}</p>
+              </div>
+
+              <div className="space-y-2">
+                {upcomingFights.map((fight, i) => {
+                  const pick = picks[fight.id]
+                  return (
+                    <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-gray-400 text-xs">Fight {fight.fight_number}</p>
+                        <p className="text-white font-bold truncate">
+                          {pick?.winner_pick || <span className="text-red-400">No pick</span>}
+                          {pick?.method_pick && <span className="text-gray-400 font-normal"> · {pick.method_pick}{pick.round_pick ? ` R${pick.round_pick}` : ''}</span>}
+                        </p>
+                      </div>
+                      <button type="button" onClick={() => { setError(''); setFlowStep(i) }} className="text-red-400 hover:text-red-300 text-sm font-bold shrink-0">Edit</button>
+                    </div>
+                  )
+                })}
+
+                <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-gray-400 text-xs">Tiebreaker — main event time</p>
+                    <p className="text-white font-bold">
+                      {(tieMin || tieSec) ? `${parseInt(tieMin || '0', 10)}:${parseInt(tieSec || '0', 10).toString().padStart(2, '0')}` : <span className="text-gray-500">Not set</span>}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => { setError(''); setFlowStep('tiebreaker') }} className="text-red-400 hover:text-red-300 text-sm font-bold shrink-0">Edit</button>
+                </div>
+              </div>
+
+              {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
+
+              <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-40">
+                <div className="max-w-3xl mx-auto flex gap-3">
+                  <button type="button" onClick={() => { setError(''); setFlowStep('tiebreaker') }} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
+                  <button type="button" onClick={() => setShowConfirmSheet(true)} className="flex-1 py-3.5 rounded-xl font-black text-lg bg-green-600 hover:bg-green-500 text-white transition-colors">Submit My Picks</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Sticky running total */}
-      {totalPotential > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-50">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
-            <div>
-              <p className="text-gray-300 text-xs">{pickedCount} of {upcomingFights.length} fights picked</p>
-              <p className="text-gray-400 text-sm font-medium">Max potential score</p>
+      {/* Confirm sheet */}
+      {showConfirmSheet && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !submitting && setShowConfirmSheet(false)}>
+          <div className="w-full sm:max-w-md bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-black text-white text-center">Lock in your picks?</h3>
+            <p className="text-gray-300 text-sm text-center mt-1.5">You won't be able to change them.</p>
+            <div className="mt-6 space-y-2.5">
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-black text-lg py-4 rounded-2xl transition-colors"
+              >
+                {submitting ? 'Locking in…' : 'Yes, lock them in'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowConfirmSheet(false)}
+                disabled={submitting}
+                className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-2xl transition-colors"
+              >
+                Go back
+              </button>
             </div>
-            <span className="text-green-400 font-black text-3xl">+{totalPotential}</span>
           </div>
         </div>
       )}

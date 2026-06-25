@@ -58,6 +58,7 @@ export interface Player {
   activated: boolean
   payout_paid?: boolean
   entry_number?: number | null
+  tiebreaker?: string | null   // player's predicted main-event total time, "M:SS"
   created_at: string
 }
 
