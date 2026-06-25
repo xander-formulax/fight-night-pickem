@@ -389,13 +389,6 @@ export default function PlayPage() {
     const activeEntry = storedEntries[activeEntryIdx] ?? storedEntries[0]
     const selectedComp = competitions.find((c) => c.id === viewingPlayer?.competition_id)
 
-    // Which competitions still have entries available for this player?
-    const availableComps = competitions.filter((comp) => {
-      const maxEntries = comp.max_entries ?? 1
-      const usedForComp = storedEntries.filter((e) => e.competition_id === comp.id).length
-      return maxEntries > 1 && usedForComp < maxEntries
-    })
-
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
         <PlayerTabs />
@@ -423,6 +416,50 @@ export default function PlayPage() {
                 </button>
               )
             })}
+          </div>
+        )}
+
+        {/* Entry purchase cards — same big tiles as the opening screen, with purchase counts */}
+        {competitions.some((c) => (c.max_entries ?? 1) > 1) && (
+          <div className="mb-6">
+            <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">Entries</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {competitions.map((comp) => {
+                const used = storedEntries.filter((e) => e.competition_id === comp.id).length
+                const max = comp.max_entries ?? 1
+                const isMaxed = used >= max
+                return (
+                  <button
+                    key={comp.id}
+                    type="button"
+                    disabled={isMaxed}
+                    onClick={() => {
+                      setName(viewingPlayer?.name ?? '')
+                      setSelectedCompetitionId(comp.id)
+                      resetPicksToEmpty(fights)
+                      setError('')
+                      setFlowStep(fights.some((f) => f.status === 'upcoming') ? 0 : 'review')
+                      setIsAddingEntry(true)
+                    }}
+                    className={`relative flex flex-col items-start text-left p-6 rounded-2xl border-2 transition-all ${
+                      isMaxed
+                        ? 'border-gray-800 opacity-40 cursor-not-allowed'
+                        : 'border-gray-700 hover:border-red-500 hover:bg-red-900/10'
+                    }`}
+                  >
+                    {!isMaxed && (
+                      <span className="absolute top-4 right-4 w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center text-xl leading-none">+</span>
+                    )}
+                    <span className="text-red-400 font-black text-3xl">{comp.entry_fee}</span>
+                    <span className="text-white font-bold text-lg mt-1">{comp.name}</span>
+                    {comp.description && <span className="text-gray-400 text-sm mt-1">{comp.description}</span>}
+                    <span className={`text-xs mt-2 font-semibold ${isMaxed ? 'text-gray-500' : 'text-blue-400'}`}>
+                      {used} of {max} {max === 1 ? 'entry' : 'entries'} purchased
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -685,33 +722,6 @@ export default function PlayPage() {
               })}
             </div>
 
-            {/* Add Another Entry buttons */}
-            {availableComps.length > 0 && (
-              <div className="mt-6 space-y-2">
-                <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">Add Another Entry</p>
-                {availableComps.map((comp) => {
-                  const used = storedEntries.filter((e) => e.competition_id === comp.id).length
-                  const max = comp.max_entries ?? 1
-                  return (
-                    <button
-                      key={comp.id}
-                      onClick={() => {
-                        setName(viewingPlayer?.name ?? '')
-                        setSelectedCompetitionId(comp.id)
-                        resetPicksToEmpty(fights)
-                        setError('')
-                        setFlowStep(fights.some((f) => f.status === 'upcoming') ? 0 : 'review')
-                        setIsAddingEntry(true)
-                      }}
-                      className="w-full flex items-center justify-between bg-gray-800/70 hover:bg-gray-700/70 border border-gray-700 rounded-xl px-5 py-3 transition-colors"
-                    >
-                      <span className="text-white font-bold">{comp.name} — Entry #{used + 1}</span>
-                      <span className="text-gray-400 text-sm">{used}/{max} used · {comp.entry_fee}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
           </>
         )}
       </div>
