@@ -61,6 +61,7 @@ export default function PlayPage() {
   const [submitting, setSubmitting] = useState(false)
   const [existingPlayer, setExistingPlayer] = useState<Player | null>(null)
   const [existingPicks, setExistingPicks] = useState<Pick[]>([])
+  const [eventTitle, setEventTitle] = useState('')
 
   const [name, setName] = useState('')
   const [selectedCompetitionId, setSelectedCompetitionId] = useState('')
@@ -82,10 +83,16 @@ export default function PlayPage() {
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
 
-    const [{ data: compsData }, { data: fightsData }] = await Promise.all([
+    const [{ data: compsData }, { data: fightsData }, settingsRes] = await Promise.all([
       supabase.from('competitions').select('*').order('created_at'),
       supabase.from('fights').select('*').order('fight_number'),
+      fetch('/api/event-settings'),
     ])
+
+    if (settingsRes.ok) {
+      const settings = await settingsRes.json()
+      if (settings.event_title) setEventTitle(settings.event_title)
+    }
 
     if (compsData) setCompetitions(compsData)
     if (fightsData) {
@@ -289,7 +296,7 @@ export default function PlayPage() {
       <div className="max-w-3xl mx-auto px-4 py-8">
         <PlayerTabs />
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-black text-red-500 tracking-tight">UFC FIGHT NIGHT</h1>
+          <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
           <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
         </div>
 

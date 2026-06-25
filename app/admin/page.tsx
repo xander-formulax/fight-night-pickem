@@ -685,6 +685,14 @@ export default function AdminPage() {
   const [savingPickId, setSavingPickId] = useState('')
   const [savingBetId, setSavingBetId] = useState('')
   const [clearingPlayer, setClearingPlayer] = useState('')
+  const [payingPlayer, setPayingPlayer] = useState('')
+
+  // event settings
+  const [eventTitle, setEventTitle] = useState('')
+  const [eventTitleInput, setEventTitleInput] = useState('')
+  const [eventTitleSaving, setEventTitleSaving] = useState(false)
+  const [posterUploading, setPosterUploading] = useState(false)
+  const [posterUrl, setPosterUrl] = useState('')
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setDataLoading(true)
@@ -718,6 +726,8 @@ export default function AdminPage() {
       const target = parseFloat(settings.party_cost_target) || 0
       setPartyCostTarget(target)
       if (!silent) setPartyCostInput(target > 0 ? String(target) : '')
+      if (settings.event_title) { setEventTitle(settings.event_title); if (!silent) setEventTitleInput(settings.event_title) }
+      if (settings.poster_url) setPosterUrl(settings.poster_url)
     }
     if (!silent) setDataLoading(false)
   }, [])
@@ -781,6 +791,35 @@ export default function AdminPage() {
     })
     if (res.ok) setPartyCostTarget(target)
     setPartyCostSaving(false)
+  }
+
+  async function saveEventTitle() {
+    setEventTitleSaving(true)
+    await fetch('/api/event-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_title: eventTitleInput }),
+    })
+    setEventTitle(eventTitleInput)
+    setEventTitleSaving(false)
+  }
+
+  async function uploadPoster(file: File) {
+    setPosterUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/upload-poster', { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.url) setPosterUrl(data.url)
+    setPosterUploading(false)
+  }
+
+  async function markPlayerAllPaid(playerName: string, pickEmPlayerId: string | null, betIds: string[]) {
+    setPayingPlayer(playerName)
+    const calls: Promise<void>[] = []
+    if (pickEmPlayerId) calls.push(markPickEmPaid(pickEmPlayerId))
+    for (const betId of betIds) calls.push(markJackpotPaid(betId))
+    await Promise.all(calls)
+    setPayingPlayer('')
   }
 
   async function deleteComp(id: string) {
@@ -1162,6 +1201,56 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+
+      {/* ── Event Info ───────────────────────────────────────────────────── */}
+      {activeTab === 'setup' && <section className="mb-8">
+        <SectionHeader>Event Info</SectionHeader>
+        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 space-y-5">
+          {/* Event Title */}
+          <div>
+            <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1">Event Title</label>
+            <p className="text-xs text-gray-600 mb-2">Shown as the heading on the player page. Leave blank for the default.</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={eventTitleInput}
+                onChange={(e) => setEventTitleInput(e.target.value)}
+                placeholder="e.g. UFC 329: McGregor vs Holloway II"
+                className={inputCls}
+              />
+              <button
+                onClick={saveEventTitle}
+                disabled={eventTitleSaving}
+                className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
+              >
+                {eventTitleSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {eventTitle && <p className="text-gray-600 text-xs mt-1.5">Current: <span className="text-gray-400">{eventTitle}</span></p>}
+          </div>
+
+          {/* Poster Upload */}
+          <div>
+            <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1">Background Poster</label>
+            <p className="text-xs text-gray-600 mb-2">Shown as a subtle ambient background on all pages.</p>
+            <div className="flex items-center gap-3">
+              <label className={`inline-flex items-center gap-2 cursor-pointer bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${posterUploading ? 'opacity-50 cursor-wait' : ''}`}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={posterUploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPoster(f) }}
+                />
+                {posterUploading ? 'Uploading…' : 'Upload Image'}
+              </label>
+              {posterUrl && !posterUploading && (
+                <span className="text-green-500 text-xs font-semibold">✓ Poster active</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>}
 
       {/* ── SECTION 1: Prize Pool Setup ───────────────────────────────────── */}
       {activeTab === 'setup' && <section className="mb-10">
@@ -1998,22 +2087,23 @@ export default function AdminPage() {
         if (pickEmPayouts.length === 0 && jackpotPayouts.length === 0) return null
 
         // Aggregate payouts by player
-        const playerTotalsMap = new Map<string, { playerName: string; items: Array<{ label: string; amount: number; color: string }>; total: number; allPaid: boolean }>()
+        type PlayerTotalEntry = { playerName: string; items: Array<{ label: string; amount: number; color: string }>; total: number; allPaid: boolean; unpaidPickEmId: string | null; unpaidBetIds: string[] }
+        const playerTotalsMap = new Map<string, PlayerTotalEntry>()
         for (const p of pickEmPayouts) {
-          if (!playerTotalsMap.has(p.playerName)) playerTotalsMap.set(p.playerName, { playerName: p.playerName, items: [], total: 0, allPaid: true })
+          if (!playerTotalsMap.has(p.playerName)) playerTotalsMap.set(p.playerName, { playerName: p.playerName, items: [], total: 0, allPaid: true, unpaidPickEmId: null, unpaidBetIds: [] })
           const e = playerTotalsMap.get(p.playerName)!
           const placeLabel = p.label.split('—')[1]?.trim() ?? p.label
           e.items.push({ label: placeLabel, amount: p.amount, color: 'text-green-400' })
           e.total += p.amount
-          if (!p.paid) e.allPaid = false
+          if (!p.paid) { e.allPaid = false; e.unpaidPickEmId = p.playerId }
         }
         for (const p of jackpotPayouts) {
-          if (!playerTotalsMap.has(p.playerName)) playerTotalsMap.set(p.playerName, { playerName: p.playerName, items: [], total: 0, allPaid: true })
+          if (!playerTotalsMap.has(p.playerName)) playerTotalsMap.set(p.playerName, { playerName: p.playerName, items: [], total: 0, allPaid: true, unpaidPickEmId: null, unpaidBetIds: [] })
           const e = playerTotalsMap.get(p.playerName)!
           const fightLabel = p.label.split('—')[0]?.trim() ?? p.label
           e.items.push({ label: fightLabel, amount: p.amount, color: 'text-yellow-400' })
           e.total += p.amount
-          if (!p.paid) e.allPaid = false
+          if (!p.paid) { e.allPaid = false; e.unpaidBetIds.push(p.betId) }
         }
         const sortedPlayerTotals = Array.from(playerTotalsMap.values()).sort((a, b) => b.total - a.total)
 
@@ -2051,7 +2141,7 @@ export default function AdminPage() {
                   <tbody>
                     {sortedPlayerTotals.map((entry) => (
                       <tr key={entry.playerName} className={`border-b border-gray-800/50 ${!entry.allPaid ? 'bg-gray-800/10' : ''}`}>
-                        <td className="px-5 py-3.5 text-white font-bold w-36 shrink-0">{entry.playerName}</td>
+                        <td className="px-5 py-3.5 text-white font-bold w-32 shrink-0">{entry.playerName}</td>
                         <td className="px-4 py-3.5">
                           <div className="flex flex-wrap gap-2">
                             {entry.items.map((item, i) => (
@@ -2063,9 +2153,18 @@ export default function AdminPage() {
                             ))}
                           </div>
                         </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <span className="text-white font-black text-lg">${entry.total}</span>
-                          {entry.allPaid && <span className="ml-2 text-xs text-gray-600">paid</span>}
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          <span className="text-white font-black text-lg mr-3">${entry.total}</span>
+                          {entry.allPaid
+                            ? <span className="text-xs font-semibold text-gray-600 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
+                            : <button
+                                onClick={() => markPlayerAllPaid(entry.playerName, entry.unpaidPickEmId, entry.unpaidBetIds)}
+                                disabled={payingPlayer === entry.playerName}
+                                className="bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-colors"
+                              >
+                                {payingPlayer === entry.playerName ? 'Paying…' : `Pay $${entry.total}`}
+                              </button>
+                          }
                         </td>
                       </tr>
                     ))}
