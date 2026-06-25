@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 
 export function PosterBackground() {
-  const [url, setUrl] = useState('/poster.webp')
+  const [url, setUrl] = useState('')
 
   useEffect(() => {
     fetch('/api/event-settings')
@@ -11,16 +11,17 @@ export function PosterBackground() {
       .catch(() => {})
   }, [])
 
+  if (!url) return null
   return (
     <div
       className="fixed inset-0 -z-10 pointer-events-none"
       style={{
         backgroundImage: `url('${url}')`,
         backgroundSize: 'cover',
-        backgroundPosition: 'center 20%',
+        backgroundPosition: 'center top',
         backgroundRepeat: 'no-repeat',
-        opacity: 0.07,
-        filter: 'blur(6px) saturate(1.4)',
+        opacity: 0.13,
+        filter: 'blur(8px) saturate(1.6)',
       }}
     />
   )

@@ -13,8 +13,9 @@ export async function setStorageConfig(supabase: SupabaseClient, updates: Record
   const next = { ...current, ...updates }
   await supabase.storage.createBucket('settings', { public: false }).catch(() => {})
   const content = Buffer.from(JSON.stringify(next))
-  await supabase.storage.from('settings').upload('app-config.json', content, {
+  const { error } = await supabase.storage.from('settings').upload('app-config.json', content, {
     contentType: 'application/json',
     upsert: true,
   })
+  if (error) throw new Error(`Config save failed: ${error.message}`)
 }
