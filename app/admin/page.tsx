@@ -409,17 +409,24 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
   competitions: Competition[]; fights: Fight[]; partyCostTarget: number; onExit: () => void
 }) {
   const [counts, setCounts] = useState<Record<string, string>>({})
-  const [jackpotRate, setJackpotRate] = useState(60) // % of players who enter each jackpot
+  const [jackpotAvgEntries, setJackpotAvgEntries] = useState('8')
+  const [jackpotFee, setJackpotFee] = useState('')
   const [players, setPlayers] = useState<SimPlayer[]>([])
   const [results, setResults] = useState<SimResult[]>([])
   const [simRan, setSimRan] = useState(false)
 
   const jackpotFights = fights.filter(f => f.stoppage_bet_open)
+  const defaultFee = jackpotFights[0]?.stoppage_bet_fee ?? '20'
+  const effectiveFee = parseFloat(jackpotFee || defaultFee) || 20
 
   function generatePlayers() {
     const pool = [...SIM_NAMES].sort(() => Math.random() - 0.5)
     let nameIdx = 0
     const newPlayers: SimPlayer[] = []
+    const totalCount = Object.values(counts).reduce((s, v) => s + (parseInt(v) || 0), 0)
+    // probability each player enters a given jackpot fight
+    const avgEntries = Math.max(0, parseInt(jackpotAvgEntries) || 0)
+    const entryProb = totalCount > 0 ? avgEntries / totalCount : 0
     competitions.forEach(comp => {
       const n = Math.max(0, Math.min(200, parseInt(counts[comp.id] || '0', 10)))
       for (let i = 0; i < n; i++) {
@@ -433,7 +440,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
         })
         const jackpotBets: SimPlayer['jackpotBets'] = {}
         jackpotFights.forEach(fight => {
-          if (Math.random() * 100 < jackpotRate) {
+          if (Math.random() < entryProb) {
             jackpotBets[fight.id] = {
               round: simRandInt(1, fight.rounds),
               minute: simRandInt(1, 5),
@@ -507,18 +514,35 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
               ))}
             </div>
             {jackpotFights.length > 0 && (
-              <div className="mb-4 bg-yellow-950/30 border border-yellow-800/40 rounded-xl px-4 py-3 flex items-center gap-4">
-                <div>
-                  <p className="text-yellow-300 text-xs font-bold uppercase tracking-wider">Jackpot participation</p>
-                  <p className="text-yellow-600 text-xs mt-0.5">{jackpotFights.length} jackpot fight{jackpotFights.length > 1 ? 's' : ''} · ${jackpotFights.map(f => f.stoppage_bet_fee ?? '20').join(', ')} entry</p>
-                </div>
-                <div className="flex items-center gap-3 ml-auto">
-                  <input
-                    type="range" min={0} max={100} value={jackpotRate}
-                    onChange={e => setJackpotRate(parseInt(e.target.value))}
-                    className="w-28 accent-yellow-500"
-                  />
-                  <span className="text-yellow-300 font-black text-sm w-10 text-right">{jackpotRate}%</span>
+              <div className="mb-4 bg-yellow-950/30 border border-yellow-800/40 rounded-xl px-4 py-3">
+                <p className="text-yellow-300 text-xs font-bold uppercase tracking-wider mb-3">
+                  Jackpot — {jackpotFights.length} fight{jackpotFights.length > 1 ? 's' : ''}
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <div>
+                    <label className="block text-yellow-600 text-xs mb-1">Avg entries per fight</label>
+                    <input
+                      type="number" min={0} max={500}
+                      value={jackpotAvgEntries}
+                      onChange={e => setJackpotAvgEntries(e.target.value)}
+                      className="w-24 bg-gray-800 border border-yellow-800/60 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-yellow-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-yellow-600 text-xs mb-1">$ per entry</label>
+                    <input
+                      type="number" min={0}
+                      value={jackpotFee}
+                      onChange={e => setJackpotFee(e.target.value)}
+                      placeholder={defaultFee}
+                      className="w-24 bg-gray-800 border border-yellow-800/60 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-yellow-500"
+                    />
+                  </div>
+                  <div className="self-end pb-1.5">
+                    <span className="text-yellow-400 text-xs font-semibold">
+                      ≈ ${(parseInt(jackpotAvgEntries) || 0) * effectiveFee} pot per fight
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -587,9 +611,8 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                     <div className="space-y-2">
                       {jackpotFights.map(fight => {
                         const result = results.find(r => r.fight_id === fight.id)
-                        const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
                         const entrants = players.filter(p => fight.id in p.jackpotBets)
-                        const pot = entrants.length * fee + rollover + (fight.jackpot_rollover ?? 0)
+                        const pot = entrants.length * effectiveFee + rollover + (fight.jackpot_rollover ?? 0)
                         const bets = entrants.map(p => ({ player: p, bet: p.jackpotBets[fight.id] }))
                         const winner = result ? findJackpotWinner(bets, result) : null
                         const isDecision = result?.method === 'Decision'
@@ -607,7 +630,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                               <span className="text-yellow-400 font-black">${pot.toFixed(0)}</span>
                             </div>
                             <div className="mt-1.5 text-xs text-gray-400">
-                              {entrants.length} entries · ${fee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}
+                              {entrants.length} entries · ${effectiveFee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}
                             </div>
                             {!result ? null : isDecision ? (
                               <p className="mt-1.5 text-xs text-orange-400 font-semibold">Decision — pot rolls over (${pot.toFixed(0)})</p>
