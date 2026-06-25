@@ -20,8 +20,7 @@ export function PosterBackground() {
         backgroundSize: 'cover',
         backgroundPosition: 'center top',
         backgroundRepeat: 'no-repeat',
-        opacity: 0.13,
-        filter: 'blur(8px) saturate(1.6)',
+        filter: 'brightness(1.05) saturate(1.3)',
       }}
     />
   )

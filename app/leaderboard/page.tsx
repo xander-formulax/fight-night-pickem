@@ -32,7 +32,7 @@ function PlayerModal({
       onClick={onClose}
     >
       <div
-        className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-gray-900/95 backdrop-blur-md rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -189,6 +189,7 @@ export default function LeaderboardPage() {
   const [allScores, setAllScores] = useState<Score[]>([])
   const [allPicks, setAllPicks] = useState<Pick[]>([])
   const [partyCostTarget, setPartyCostTarget] = useState(0)
+  const [eventTitle, setEventTitle] = useState('')
   const [lastUpdate, setLastUpdate] = useState('')
   const [expandedEntry, setExpandedEntry] = useState<PlayerWithScores | null>(null)
 
@@ -231,6 +232,7 @@ export default function LeaderboardPage() {
     if (settingsRes.ok) {
       const s = await settingsRes.json()
       setPartyCostTarget(parseFloat(s.party_cost_target) || 0)
+      if (s.event_title) setEventTitle(s.event_title)
     }
     setLastUpdate(new Date().toLocaleTimeString())
   }, [])
@@ -252,7 +254,7 @@ export default function LeaderboardPage() {
   const entries = activeCompId ? buildEntries(allPlayers, allScores, activeCompId) : []
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="min-h-screen p-4 md:p-8">
       {/* Tab navigation */}
       <div className="max-w-3xl mx-auto flex gap-1 bg-gray-900/80 rounded-xl p-1 mb-6">
         <Link href="/play" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-500 hover:text-white transition-colors">My Picks</Link>
@@ -261,8 +263,8 @@ export default function LeaderboardPage() {
 
       {/* Header */}
       <div className="text-center mb-6">
-        <h1 className="text-5xl md:text-8xl font-black text-red-500 tracking-tight leading-none">
-          FIGHT NIGHT
+        <h1 className="text-4xl md:text-6xl font-black text-red-500 tracking-tight leading-none">
+          {eventTitle || 'UFC FIGHT NIGHT'}
         </h1>
         <h2 className="text-3xl md:text-5xl font-black text-white mt-1 tracking-widest">
           LEADERBOARD

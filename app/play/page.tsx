@@ -317,7 +317,7 @@ export default function PlayPage() {
           </div>
         )}
 
-        <div className="bg-gray-900 rounded-xl p-6 mb-6">
+        <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 mb-6">
           <h3 className="text-lg font-bold text-white mb-3">Your Entry Details</h3>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             <div>
@@ -362,7 +362,7 @@ export default function PlayPage() {
                     fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
 
                   return (
-                    <div key={fight.id} className="bg-gray-900 rounded-xl p-5 border border-yellow-900/40">
+                    <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-5 border border-yellow-900/40">
                       {/* Header */}
                       <div className="flex justify-between items-start mb-4">
                         <div>
@@ -524,7 +524,7 @@ export default function PlayPage() {
           {fights.map((fight) => {
             const pick = existingPicks.find((p) => p.fight_id === fight.id)
             return (
-              <div key={fight.id} className="bg-gray-900 rounded-xl p-4">
+              <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-4">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-gray-500 text-xs font-medium">FIGHT {fight.fight_number}</span>
                   <StatusBadge status={fight.status} />
@@ -572,19 +572,19 @@ export default function PlayPage() {
     <div className={`max-w-3xl mx-auto px-4 py-8 ${totalPotential > 0 ? 'pb-28' : ''}`}>
       <PlayerTabs />
       <div className="text-center mb-8">
-        <h1 className="text-4xl font-black text-red-500 tracking-tight">UFC FIGHT NIGHT</h1>
+        <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
         <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
         <p className="text-gray-500 mt-2 text-sm">Submit your picks for tonight's fights</p>
       </div>
 
       {competitions.length === 0 ? (
-        <div className="bg-gray-900 rounded-xl p-10 text-center text-gray-500">
+        <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-10 text-center text-gray-500">
           No prize pools are set up yet. Check back soon.
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Player info */}
-          <div className="bg-gray-900 rounded-xl p-6 space-y-4">
+          <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 space-y-4">
             <h2 className="text-lg font-bold text-white">Your Info</h2>
 
             <div>
@@ -595,7 +595,7 @@ export default function PlayPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 placeholder="Your full name"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
+                className="w-full bg-gray-800/70 border border-gray-700/80 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
               />
             </div>
 
@@ -654,7 +654,7 @@ export default function PlayPage() {
             <h2 className="text-lg font-bold text-white">Your Picks</h2>
 
             {fights.length === 0 && (
-              <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-600">
+              <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-8 text-center text-gray-600">
                 Fights not posted yet. Check back soon.
               </div>
             )}
@@ -666,7 +666,7 @@ export default function PlayPage() {
               return (
                 <div
                   key={fight.id}
-                  className={`bg-gray-900 rounded-xl p-6 transition-opacity ${isLocked ? 'opacity-50' : ''}`}
+                  className={`bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 transition-opacity ${isLocked ? 'opacity-50' : ''}`}
                 >
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-gray-500 text-xs font-semibold tracking-wider">
