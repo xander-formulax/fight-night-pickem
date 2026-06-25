@@ -894,6 +894,12 @@ export default function AdminPage() {
   const [resultForms, setResultForms] = useState<Record<string, ResultFormState>>({})
   const [savingResults, setSavingResults] = useState<Record<string, boolean>>({})
 
+  // fight management sheets
+  const [lockConfirmFight, setLockConfirmFight] = useState<Fight | null>(null)
+  const [lockingFight, setLockingFight] = useState(false)
+  const [resultsSheetFightId, setResultsSheetFightId] = useState<string | null>(null)
+  const [sheetSaveState, setSheetSaveState] = useState<'idle' | 'saving' | 'done'>('idle')
+
   // stoppage jackpot
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
   const [scores, setScores] = useState<Score[]>([])
@@ -1093,10 +1099,73 @@ export default function AdminPage() {
     await fetch('/api/lock-all-fights', { method: 'POST' })
   }
 
-  async function advanceStatus(fight: Fight) {
-    if (fight.status !== 'locked') return
-    setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: 'complete' as const } : f))
+  // ── per-fight lock (with confirmation) ────────────────────────────────────
+  async function lockPicksConfirmed() {
+    const fight = lockConfirmFight
+    if (!fight) return
+    setLockingFight(true)
+    setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: 'locked' as const } : f))
+    await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: fight.id, status: 'locked' }) })
+    setLockingFight(false)
+    setLockConfirmFight(null)
+  }
+
+  // ── enter-results bottom sheet ────────────────────────────────────────────
+  function openResultsSheet(fight: Fight) {
+    setResultForms((prev) => ({
+      ...prev,
+      [fight.id]: prev[fight.id] ?? { winner: fight.result_winner ?? '', method: fight.result_method ?? '', round: fight.result_round?.toString() ?? '' },
+    }))
+    if (fight.stoppage_actual_round != null) {
+      setStopActual((prev) => ({ ...prev, [fight.id]: { round: String(fight.stoppage_actual_round), minute: String(fight.stoppage_actual_minute ?? ''), second: String(fight.stoppage_actual_second ?? '0') } }))
+    }
+    setSheetSaveState('idle')
+    setResultsSheetFightId(fight.id)
+  }
+
+  async function saveResultsFromSheet(fight: Fight) {
+    const form = resultForms[fight.id]
+    if (!form?.winner || !form?.method) return
+    setSheetSaveState('saving')
+
+    // Save result + compute pick'em scores
+    await fetch('/api/save-results', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fight_id: fight.id, result_winner: form.winner, result_method: form.method, result_round: form.method !== 'Decision' && form.round ? parseInt(form.round, 10) : null }),
+    })
+
+    // Resolve stoppage jackpot if not a decision
+    if (form.method !== 'Decision') {
+      const a = stopActual[fight.id]
+      const round = parseInt(a?.round || '0', 10)
+      const minute = parseInt(a?.minute || '0', 10)
+      const second = parseInt(a?.second || '0', 10)
+      if (round) {
+        const res = await fetch('/api/resolve-stoppage', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fight_id: fight.id, actual_round: round, actual_minute: minute, actual_second: second }),
+        })
+        const result = await res.json()
+        if (result.winner) {
+          const playerName = players.find((p) => p.id === result.winner.player_id)?.name ?? 'Unknown'
+          const m = result.winner.minute_pick - 1
+          const s = String(result.winner.second_pick).padStart(2, '0')
+          setStoppageWinners((prev) => ({ ...prev, [fight.id]: `${playerName} — R${result.winner.round_pick} ${m}:${s}` }))
+        } else {
+          setStoppageWinners((prev) => ({ ...prev, [fight.id]: `No winner — no bets at or before R${round} ${minute}:${String(second).padStart(2, '0')}` }))
+        }
+      }
+    } else if (stoppageBets.some((b) => b.fight_id === fight.id && b.activated)) {
+      setStoppageWinners((prev) => ({ ...prev, [fight.id]: 'No winner — Decision' }))
+    }
+
+    // Mark the fight complete (results sheet is opened from a locked fight)
     await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: fight.id, status: 'complete' }) })
+    setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: 'complete' as const, result_winner: form.winner, result_method: form.method as Fight['result_method'], result_round: form.method !== 'Decision' && form.round ? parseInt(form.round, 10) : null } : f))
+
+    await loadData(true)
+    setSheetSaveState('done')
+    setTimeout(() => { setResultsSheetFightId(null); setSheetSaveState('idle') }, 2000)
   }
 
   // ── players ───────────────────────────────────────────────────────────────
@@ -1378,6 +1447,157 @@ export default function AdminPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {showQR && <QRModal onClose={() => setShowQR(false)} />}
+
+      {/* Lock Picks confirmation */}
+      {lockConfirmFight && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !lockingFight && setLockConfirmFight(null)}>
+          <div className="w-full sm:max-w-md bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-black text-white text-center">Lock picks?</h3>
+            <p className="text-gray-300 text-sm text-center mt-2">
+              Lock picks for <span className="text-white font-bold">{lockConfirmFight.fighter_a}</span> vs <span className="text-white font-bold">{lockConfirmFight.fighter_b}</span>? Players won&apos;t be able to change their picks.
+            </p>
+            <div className="mt-6 space-y-2.5">
+              <button onClick={lockPicksConfirmed} disabled={lockingFight} className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 text-black font-black text-lg py-4 rounded-2xl transition-colors">
+                {lockingFight ? 'Locking…' : '🔒 Lock Picks'}
+              </button>
+              <button onClick={() => setLockConfirmFight(null)} disabled={lockingFight} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-2xl transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Enter Results bottom sheet */}
+      {(() => {
+        const fight = fights.find((f) => f.id === resultsSheetFightId)
+        if (!fight) return null
+        const form = resultForms[fight.id] ?? { winner: '', method: '', round: '' }
+        const stop = stopActual[fight.id] ?? { round: '', minute: '', second: '0' }
+        const jackpotInPlay = fight.stoppage_bet_open || stoppageBets.some((b) => b.fight_id === fight.id)
+        const needsRound = form.method !== '' && form.method !== 'Decision'
+        const roundOk = !needsRound || Boolean(form.round)
+        const canSave = Boolean(form.winner) && Boolean(form.method) && roundOk
+        const curSecond = parseInt(stop.second || '0', 10)
+
+        function pickRound(r: number) {
+          setResult(fight!.id, 'round', String(r))
+          if (jackpotInPlay) setStopActual((prev) => ({ ...prev, [fight!.id]: { round: String(r), minute: prev[fight!.id]?.minute ?? '', second: prev[fight!.id]?.second ?? '0' } }))
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => sheetSaveState === 'idle' && setResultsSheetFightId(null)}>
+            <div className="w-full sm:max-w-lg bg-gray-900 rounded-t-3xl border-t border-gray-700 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              {sheetSaveState === 'done' ? (
+                <div className="p-10 text-center">
+                  <div className="text-6xl mb-3">✅</div>
+                  <p className="text-white font-black text-xl">Scores updated.</p>
+                  <p className="text-green-400 font-semibold mt-1">Leaderboard is live.</p>
+                </div>
+              ) : sheetSaveState === 'saving' ? (
+                <div className="p-10 text-center">
+                  <div className="w-10 h-10 border-4 border-gray-700 border-t-green-500 rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-white font-bold text-lg">Calculating scores…</p>
+                </div>
+              ) : (
+                <div className="p-6 space-y-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Fight {fight.fight_number} — Enter Results</p>
+                      <p className="text-white font-bold text-lg mt-0.5">{fight.fighter_a} vs {fight.fighter_b}</p>
+                    </div>
+                    <button onClick={() => setResultsSheetFightId(null)} className="text-gray-400 hover:text-white text-2xl leading-none shrink-0">&times;</button>
+                  </div>
+
+                  {/* Winner */}
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Winner</p>
+                    {[fight.fighter_a, fight.fighter_b].map((fighter) => {
+                      const sel = form.winner === fighter
+                      return (
+                        <button key={fighter} onClick={() => setResult(fight.id, 'winner', fighter)}
+                          className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl border-2 transition-all ${sel ? 'border-red-500 bg-red-900/30' : 'border-gray-700 hover:border-gray-500'}`}>
+                          <span className="text-white font-black text-xl">{fighter}</span>
+                          <span className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-base ${sel ? 'border-red-500 bg-red-500 text-white' : 'border-gray-600 text-transparent'}`}>✓</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Method */}
+                  {form.winner && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Method</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([{ v: 'KO/TKO', i: '👊' }, { v: 'Submission', i: '🔒' }, { v: 'Decision', i: '📋' }] as const).map(({ v, i }) => {
+                          const sel = form.method === v
+                          return (
+                            <button key={v} onClick={() => setResult(fight.id, 'method', v)}
+                              className={`flex flex-col items-center gap-1 py-3.5 rounded-2xl border-2 transition-all ${sel ? 'border-orange-500 bg-orange-900/30' : 'border-gray-700 hover:border-gray-500'}`}>
+                              <span className="text-2xl leading-none">{i}</span>
+                              <span className={`text-xs font-bold ${sel ? 'text-white' : 'text-gray-300'}`}>{v === 'Submission' ? 'Sub' : v}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Round pills */}
+                  {needsRound && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Round</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => {
+                          const sel = form.round === String(r)
+                          return (
+                            <button key={r} onClick={() => pickRound(r)}
+                              className={`w-14 h-14 rounded-2xl border-2 text-xl font-black transition-all ${sel ? 'border-purple-500 bg-purple-600 text-white' : 'border-gray-700 text-gray-300 hover:border-gray-500'}`}>
+                              {r}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stoppage time (only when a jackpot is in play) */}
+                  {needsRound && form.round && jackpotInPlay && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-yellow-500 uppercase tracking-wider font-semibold">Exact stoppage time (for jackpot)</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {[0, 1, 2, 3, 4].map((m) => {
+                          const sel = stop.minute === String(m)
+                          return (
+                            <button key={m} onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], round: form.round, minute: String(m), second: prev[fight.id]?.second ?? '0' } }))}
+                              className={`flex-1 min-w-[3rem] py-2.5 rounded-xl border-2 font-bold transition-all ${sel ? 'border-yellow-500 bg-yellow-900/30 text-white' : 'border-gray-700 text-gray-300 hover:border-gray-500'}`}>
+                              {m}:__
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {stop.minute !== '' && (
+                        <div>
+                          <p className="text-center text-3xl font-black text-yellow-400 tabular-nums my-2">{stop.minute}:{String(curSecond).padStart(2, '0')}</p>
+                          <input type="range" min={0} max={59} value={curSecond}
+                            onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))}
+                            className="w-full accent-yellow-500" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Save */}
+                  <button onClick={() => saveResultsFromSheet(fight)} disabled={!canSave}
+                    className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-black text-lg py-4 rounded-2xl transition-colors">
+                    Save Results &amp; Calculate Scores
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
       <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-black text-white">UFC FIGHT NIGHT &mdash; ADMIN</h1>
@@ -1660,6 +1880,28 @@ export default function AdminPage() {
 
       {/* ── SECTION 2: Fight Card Setup ───────────────────────────────────── */}
       {activeTab === 'fights' && <section className="mb-10">
+        {/* Live scoreboard of the night */}
+        {fights.length > 0 && (() => {
+          const completeCount = fights.filter((f) => f.status === 'complete').length
+          const totalPrizePools = expenseRecovery.poolData.reduce((s, p) => s + p.actualPrizePool, 0)
+          return (
+            <div className="grid grid-cols-3 gap-2 mb-5">
+              <div className="bg-gray-900 rounded-xl px-3 py-3 text-center">
+                <div className="text-2xl md:text-3xl font-black text-white tabular-nums">{completeCount}<span className="text-gray-500 text-lg">/{fights.length}</span></div>
+                <div className="text-gray-400 text-xs mt-0.5">Fights complete</div>
+              </div>
+              <div className="bg-gray-900 rounded-xl px-3 py-3 text-center">
+                <div className="text-2xl md:text-3xl font-black text-blue-400 tabular-nums">{activatedCount}</div>
+                <div className="text-gray-400 text-xs mt-0.5">Players activated</div>
+              </div>
+              <div className="bg-gray-900 rounded-xl px-3 py-3 text-center">
+                <div className="text-2xl md:text-3xl font-black text-green-400 tabular-nums">${totalPrizePools.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-gray-400 text-xs mt-0.5">In prize pools</div>
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <SectionHeader>Fights</SectionHeader>
           <div className="flex flex-wrap gap-2">
@@ -1834,11 +2076,14 @@ export default function AdminPage() {
                       <>
                         <button onClick={() => { setEditingFightId(fight.id); setShowAddFight(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>
                         <button onClick={() => deleteFight(fight.id)} className="bg-gray-800 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Delete</button>
+                        <button onClick={() => setLockConfirmFight(fight)} className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-1.5 rounded-lg text-sm font-black transition-colors">
+                          🔒 Lock Picks
+                        </button>
                       </>
                     )}
                     {fight.status === 'locked' && (
-                      <button onClick={() => advanceStatus(fight)} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">
-                        Mark Complete →
+                      <button onClick={() => openResultsSheet(fight)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-lg text-sm font-black transition-colors">
+                        Enter Results →
                       </button>
                     )}
                   </div>
