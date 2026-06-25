@@ -10,7 +10,7 @@ function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) return <span className={`${base} text-3xl text-yellow-400`}>1</span>
   if (rank === 2) return <span className={`${base} text-3xl text-gray-300`}>2</span>
   if (rank === 3) return <span className={`${base} text-3xl text-amber-600`}>3</span>
-  return <span className={`${base} text-2xl text-gray-600`}>{rank}</span>
+  return <span className={`${base} text-2xl text-gray-400`}>{rank}</span>
 }
 
 function PlayerModal({
@@ -39,13 +39,13 @@ function PlayerModal({
         <div className="flex items-start justify-between p-6 border-b border-gray-800">
           <div>
             <h2 className="text-2xl font-black text-white">{entry.player.name}</h2>
-            <p className="text-gray-500 text-sm mt-0.5">
+            <p className="text-gray-300 text-sm mt-0.5">
               {entry.player.competition_id ? '' : entry.player.tier}
             </p>
           </div>
           <div className="text-right">
             <div className="text-4xl font-black text-green-400">{entry.total}</div>
-            <div className="text-gray-600 text-xs">total pts</div>
+            <div className="text-gray-400 text-xs">total pts</div>
           </div>
         </div>
 
@@ -61,9 +61,9 @@ function PlayerModal({
               <div key={fight.id} className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <span className="text-gray-600 text-xs font-semibold">FIGHT {fight.fight_number}</span>
+                    <span className="text-gray-400 text-xs font-semibold">FIGHT {fight.fight_number}</span>
                     <p className="text-white font-bold mt-0.5">
-                      {fight.fighter_a} <span className="text-gray-600 font-normal">vs</span> {fight.fighter_b}
+                      {fight.fighter_a} <span className="text-gray-400 font-normal">vs</span> {fight.fighter_b}
                     </p>
                   </div>
                   <div className={`text-xs px-2 py-1 rounded-full font-bold ${
@@ -79,13 +79,13 @@ function PlayerModal({
                   <div className="space-y-2">
                     {/* Their pick */}
                     <div className="bg-gray-800 rounded-lg px-4 py-2.5">
-                      <p className="text-xs text-gray-500 mb-1">Your pick</p>
+                      <p className="text-xs text-gray-300 mb-1">Your pick</p>
                       <p className="text-sm">
                         <span className="text-white font-bold">{pick.winner_pick}</span>
-                        <span className="text-gray-500 mx-1.5">by</span>
+                        <span className="text-gray-300 mx-1.5">by</span>
                         <span className="text-orange-400 font-semibold">{pick.method_pick}</span>
                         {pick.round_pick != null && (
-                          <span className="text-gray-500 ml-1.5">· Round {pick.round_pick}</span>
+                          <span className="text-gray-300 ml-1.5">· Round {pick.round_pick}</span>
                         )}
                       </p>
                     </div>
@@ -93,13 +93,13 @@ function PlayerModal({
                     {/* Result + score */}
                     {hasResult ? (
                       <div className="bg-gray-800/60 rounded-lg px-4 py-2.5">
-                        <p className="text-xs text-gray-500 mb-1">Result</p>
+                        <p className="text-xs text-gray-300 mb-1">Result</p>
                         <p className="text-sm">
                           <span className="text-white font-bold">{fight.result_winner}</span>
-                          <span className="text-gray-500 mx-1.5">by</span>
+                          <span className="text-gray-300 mx-1.5">by</span>
                           <span className="text-gray-300">{fight.result_method}</span>
                           {fight.result_round != null && (
-                            <span className="text-gray-500 ml-1.5">· Round {fight.result_round}</span>
+                            <span className="text-gray-300 ml-1.5">· Round {fight.result_round}</span>
                           )}
                         </p>
                         {score ? (
@@ -124,15 +124,15 @@ function PlayerModal({
                             </span>
                           </div>
                         ) : (
-                          <p className="text-gray-700 text-xs mt-1">No points scored</p>
+                          <p className="text-gray-400 text-xs mt-1">No points scored</p>
                         )}
                       </div>
                     ) : isComplete ? (
-                      <p className="text-gray-700 text-xs px-1">Awaiting scoring</p>
+                      <p className="text-gray-400 text-xs px-1">Awaiting scoring</p>
                     ) : null}
                   </div>
                 ) : (
-                  <p className="text-gray-700 text-sm italic">No pick submitted for this fight</p>
+                  <p className="text-gray-400 text-sm italic">No pick submitted for this fight</p>
                 )}
               </div>
             )
@@ -257,7 +257,7 @@ export default function LeaderboardPage() {
     <div className="min-h-screen p-4 md:p-8">
       {/* Tab navigation */}
       <div className="max-w-3xl mx-auto flex gap-1 bg-gray-900/80 rounded-xl p-1 mb-6">
-        <Link href="/play" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-500 hover:text-white transition-colors">My Picks</Link>
+        <Link href="/play" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-300 hover:text-white transition-colors">My Picks</Link>
         <span className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center bg-white text-black">Leaderboard</span>
       </div>
 
@@ -270,7 +270,7 @@ export default function LeaderboardPage() {
           LEADERBOARD
         </h2>
         {lastUpdate && (
-          <p className="text-gray-600 text-sm mt-2">Live &bull; {lastUpdate}</p>
+          <p className="text-gray-400 text-sm mt-2">Live &bull; {lastUpdate}</p>
         )}
       </div>
 
@@ -288,7 +288,7 @@ export default function LeaderboardPage() {
               }`}
             >
               {comp.name}
-              <span className={`ml-2 text-base font-bold ${activeCompId === comp.id ? 'text-red-200' : 'text-gray-600'}`}>
+              <span className={`ml-2 text-base font-bold ${activeCompId === comp.id ? 'text-red-200' : 'text-gray-400'}`}>
                 {comp.entry_fee}
               </span>
             </button>
@@ -297,7 +297,7 @@ export default function LeaderboardPage() {
       )}
 
       {competitions.length === 1 && activeComp && (
-        <p className="text-center text-gray-500 text-sm mb-4">
+        <p className="text-center text-gray-300 text-sm mb-4">
           {activeComp.name} &bull; {activeComp.entry_fee}
         </p>
       )}
@@ -308,7 +308,7 @@ export default function LeaderboardPage() {
         if (paidCount === 0 || places.length === 0) return null
         return (
           <div className="text-center mb-6">
-            <p className="text-gray-600 text-xs uppercase tracking-widest mb-3">Current Prizes</p>
+            <p className="text-gray-400 text-xs uppercase tracking-widest mb-3">Current Prizes</p>
             <div className="flex justify-center gap-6 md:gap-10 flex-wrap">
               {places.map((p) => (
                 <div key={p.place}>
@@ -320,11 +320,11 @@ export default function LeaderboardPage() {
                   }`}>
                     ${p.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </div>
-                  <div className="text-gray-600 text-xs mt-1 uppercase tracking-wider">{ordinal(p.place)}</div>
+                  <div className="text-gray-400 text-xs mt-1 uppercase tracking-wider">{ordinal(p.place)}</div>
                 </div>
               ))}
             </div>
-            <p className="text-gray-700 text-xs mt-3">
+            <p className="text-gray-400 text-xs mt-3">
               {paidCount} paid · ${prizePool.toLocaleString(undefined, { maximumFractionDigits: 0 })} prize pool
             </p>
           </div>
@@ -342,7 +342,7 @@ export default function LeaderboardPage() {
                   ? 'bg-green-900/40 border-green-700 text-green-300'
                   : f.status === 'locked'
                   ? 'bg-yellow-900/40 border-yellow-700 text-yellow-300'
-                  : 'bg-gray-800 border-gray-700 text-gray-500'
+                  : 'bg-gray-800 border-gray-700 text-gray-300'
               }`}
             >
               <span className="uppercase tracking-wide">F{f.fight_number}</span>
@@ -354,16 +354,16 @@ export default function LeaderboardPage() {
 
       {/* Leaderboard */}
       {competitions.length === 0 ? (
-        <div className="text-center text-gray-700 text-3xl font-black mt-20 tracking-widest">
+        <div className="text-center text-gray-400 text-3xl font-black mt-20 tracking-widest">
           NO COMPETITIONS SET UP
         </div>
       ) : entries.length === 0 ? (
-        <div className="text-center text-gray-700 text-3xl font-black mt-20 tracking-widest">
+        <div className="text-center text-gray-400 text-3xl font-black mt-20 tracking-widest">
           WAITING FOR PLAYERS
         </div>
       ) : (
         <div className="max-w-2xl mx-auto space-y-2">
-          <p className="text-center text-gray-700 text-xs mb-4 tracking-wider">TAP A NAME TO SEE THEIR PICKS</p>
+          <p className="text-center text-gray-400 text-xs mb-4 tracking-wider">TAP A NAME TO SEE THEIR PICKS</p>
           {entries.map((entry, idx) => {
             const rank = idx + 1
             const isFirst = rank === 1

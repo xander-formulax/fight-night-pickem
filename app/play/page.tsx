@@ -10,7 +10,7 @@ function PlayerTabs() {
   return (
     <div className="flex gap-1 bg-gray-900/80 rounded-xl p-1 mb-6">
       <span className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center bg-white text-black">My Picks</span>
-      <Link href="/leaderboard" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-500 hover:text-white transition-colors">Leaderboard</Link>
+      <Link href="/leaderboard" className="flex-1 py-2.5 rounded-lg text-sm font-bold text-center text-gray-300 hover:text-white transition-colors">Leaderboard</Link>
     </div>
   )
 }
@@ -321,11 +321,11 @@ export default function PlayPage() {
           <h3 className="text-lg font-bold text-white mb-3">Your Entry Details</h3>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             <div>
-              <dt className="text-gray-500">Name</dt>
+              <dt className="text-gray-300">Name</dt>
               <dd className="text-white font-semibold">{existingPlayer.name}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Prize Pool</dt>
+              <dt className="text-gray-300">Prize Pool</dt>
               <dd className="text-white font-semibold">
                 {selectedComp ? `${selectedComp.name} (${selectedComp.entry_fee})` : existingPlayer.tier}
               </dd>
@@ -340,11 +340,11 @@ export default function PlayPage() {
           return (
             <div className="mb-6">
               <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
-              <p className="text-gray-500 text-sm mb-1">
+              <p className="text-gray-300 text-sm mb-1">
                 Guess the exact moment the fight gets stopped — pick a round, minute, and second.
                 The closest guess that <span className="text-white font-semibold">doesn&apos;t go over</span> wins the whole pot (Price Is Right rules).
               </p>
-              <p className="text-gray-600 text-xs mb-4">
+              <p className="text-gray-400 text-xs mb-4">
                 If the fight goes to decision, the pot rolls over to the next jackpot fight. Each second can only be claimed by one person — picks are final once confirmed.
               </p>
               <div className="space-y-4">
@@ -382,13 +382,13 @@ export default function PlayPage() {
                           {potTotal > 0 ? (
                             <>
                               <p className="text-yellow-400 font-black text-xl">${potTotal}</p>
-                              <p className="text-xs text-gray-500">current pot</p>
-                              <p className="text-xs text-gray-600">${fee} entry</p>
+                              <p className="text-xs text-gray-300">current pot</p>
+                              <p className="text-xs text-gray-400">${fee} entry</p>
                             </>
                           ) : (
                             <>
                               <p className="text-yellow-400 font-black text-xl">${fee}</p>
-                              <p className="text-xs text-gray-500">entry fee</p>
+                              <p className="text-xs text-gray-300">entry fee</p>
                             </>
                           )}
                         </div>
@@ -408,14 +408,14 @@ export default function PlayPage() {
                               {myBet.activated ? 'Confirmed' : 'Awaiting Payment'}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-600 mt-2 italic">Pick is final and cannot be changed.</p>
+                          <p className="text-xs text-gray-400 mt-2 italic">Pick is final and cannot be changed.</p>
                         </div>
                       ) : (
                         <>
                           {/* Step 1: Select Round */}
                           {draft.step === 'round' && (
                             <div>
-                              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Step 1 — Select a Round</p>
+                              <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Step 1 — Select a Round</p>
                               <div className="flex gap-2 flex-wrap">
                                 {Array.from({ length: fight.rounds ?? 3 }, (_, i) => i + 1).map((r) => (
                                   <button
@@ -434,8 +434,8 @@ export default function PlayPage() {
                           {draft.step === 'minute' && draft.round != null && (
                             <div>
                               <div className="flex items-center gap-2 mb-3">
-                                <button onClick={() => updateDraft(fight.id, { step: 'round', round: null, minute: null })} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {draft.round} — Select a Minute</p>
+                                <button onClick={() => updateDraft(fight.id, { step: 'round', round: null, minute: null })} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-300 uppercase tracking-wider">Round {draft.round} — Select a Minute</p>
                               </div>
                               <div className="flex gap-2 flex-wrap">
                                 {[0, 1, 2, 3, 4].map((clockMin) => {
@@ -449,12 +449,12 @@ export default function PlayPage() {
                                       disabled={full}
                                       className={`px-4 py-3 rounded-xl border-2 font-bold transition-all ${
                                         full
-                                          ? 'border-gray-800 text-gray-700 cursor-not-allowed'
+                                          ? 'border-gray-800 text-gray-400 cursor-not-allowed'
                                           : 'border-gray-700 text-white hover:border-yellow-600 hover:bg-yellow-900/20'
                                       }`}
                                     >
                                       <span className="text-base">{clockMin}:__</span>
-                                      {taken > 0 && <span className="block text-xs text-gray-500 font-normal">{taken}/60 taken</span>}
+                                      {taken > 0 && <span className="block text-xs text-gray-300 font-normal">{taken}/60 taken</span>}
                                     </button>
                                   )
                                 })}
@@ -466,15 +466,15 @@ export default function PlayPage() {
                           {draft.step === 'second' && draft.round != null && draft.minute != null && (
                             <div>
                               <div className="flex items-center gap-2 mb-4">
-                                <button onClick={() => updateDraft(fight.id, { step: 'minute', minute: null, second: 0 })} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {draft.round}, Minute {draft.minute - 1}:__ — Pick your second</p>
+                                <button onClick={() => updateDraft(fight.id, { step: 'minute', minute: null, second: 0 })} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-300 uppercase tracking-wider">Round {draft.round}, Minute {draft.minute - 1}:__ — Pick your second</p>
                               </div>
 
                               <div className="text-center mb-4">
                                 <p className="text-5xl font-black text-yellow-400 tabular-nums">
                                   {draft.minute - 1}:{draft.second.toString().padStart(2, '0')}
                                 </p>
-                                <p className="text-gray-500 text-sm mt-1">Round {draft.round}</p>
+                                <p className="text-gray-300 text-sm mt-1">Round {draft.round}</p>
                               </div>
 
                               <input
@@ -485,18 +485,18 @@ export default function PlayPage() {
                                 onChange={(e) => updateDraft(fight.id, { second: parseInt(e.target.value) })}
                                 className="w-full accent-yellow-500 mb-4"
                               />
-                              <div className="flex justify-between text-xs text-gray-600 mb-5">
+                              <div className="flex justify-between text-xs text-gray-400 mb-5">
                                 <span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:59</span>
                               </div>
 
                               <button
                                 onClick={() => confirmStoppageBet(fight.id)}
                                 disabled={draft.placing}
-                                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-500 text-black font-black py-3 rounded-xl transition-colors"
+                                className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-300 text-black font-black py-3 rounded-xl transition-colors"
                               >
                                 {draft.placing ? 'Checking…' : `Confirm Pick — R${draft.round} ${draft.minute - 1}:${draft.second.toString().padStart(2, '0')}`}
                               </button>
-                              <p className="text-xs text-gray-600 text-center mt-2 italic">Picks are final and cannot be changed after confirming.</p>
+                              <p className="text-xs text-gray-400 text-center mt-2 italic">Picks are final and cannot be changed after confirming.</p>
                             </div>
                           )}
 
@@ -505,7 +505,7 @@ export default function PlayPage() {
                           )}
 
                           {draft.step === 'round' && (
-                            <p className="text-xs text-gray-600 mt-3 italic">
+                            <p className="text-xs text-gray-400 mt-3 italic">
                               After locking in, contact the organizer to pay ${fee}.
                             </p>
                           )}
@@ -526,7 +526,7 @@ export default function PlayPage() {
             return (
               <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-4">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-gray-500 text-xs font-medium">FIGHT {fight.fight_number}</span>
+                  <span className="text-gray-300 text-xs font-medium">FIGHT {fight.fight_number}</span>
                   <StatusBadge status={fight.status} />
                 </div>
                 <div className="text-white font-semibold mb-1">
@@ -535,19 +535,19 @@ export default function PlayPage() {
                 {pick ? (
                   <div className="text-sm">
                     <span className="text-red-400 font-bold">{pick.winner_pick}</span>
-                    <span className="text-gray-500 mx-1">by</span>
+                    <span className="text-gray-300 mx-1">by</span>
                     <span className="text-orange-400">{pick.method_pick}</span>
                     {pick.round_pick != null && (
                       <span className="text-gray-400"> &mdash; Round {pick.round_pick}</span>
                     )}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-600 italic">
+                  <div className="text-sm text-gray-400 italic">
                     Fight was locked before submission
                   </div>
                 )}
                 {fight.status === 'complete' && fight.result_winner && (
-                  <div className="mt-2 text-xs text-gray-500">
+                  <div className="mt-2 text-xs text-gray-300">
                     Result:{' '}
                     <span className="text-white">{fight.result_winner}</span>
                     {' by '}
@@ -574,11 +574,11 @@ export default function PlayPage() {
       <div className="text-center mb-8">
         <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
         <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
-        <p className="text-gray-500 mt-2 text-sm">Submit your picks for tonight's fights</p>
+        <p className="text-gray-300 mt-2 text-sm">Submit your picks for tonight's fights</p>
       </div>
 
       {competitions.length === 0 ? (
-        <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-10 text-center text-gray-500">
+        <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-10 text-center text-gray-300">
           No prize pools are set up yet. Check back soon.
         </div>
       ) : (
@@ -595,7 +595,7 @@ export default function PlayPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 placeholder="Your full name"
-                className="w-full bg-gray-800/70 border border-gray-700/80 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
+                className="w-full bg-gray-800/70 border border-gray-700/80 rounded-lg px-4 py-2.5 text-white placeholder-gray-400 focus:outline-none focus:border-red-500 transition-colors"
               />
             </div>
 
@@ -632,13 +632,13 @@ export default function PlayPage() {
                     {(comp.prize_splits ?? []).length > 0 && (
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
                         {(comp.prize_splits ?? []).map((s) => (
-                          <span key={s.place} className="text-xs text-gray-500">
+                          <span key={s.place} className="text-xs text-gray-300">
                             {s.place === 1 ? '1st' : s.place === 2 ? '2nd' : s.place === 3 ? '3rd' : `${s.place}th`}
                             {': '}<span className="text-green-400 font-semibold">{s.pct}%</span>
                           </span>
                         ))}
                         {(comp.expense_cut_pct ?? 0) > 0 && (
-                          <span className="text-xs text-gray-600">· {comp.expense_cut_pct}% expense cut</span>
+                          <span className="text-xs text-gray-400">· {comp.expense_cut_pct}% expense cut</span>
                         )}
                       </div>
                     )}
@@ -654,7 +654,7 @@ export default function PlayPage() {
             <h2 className="text-lg font-bold text-white">Your Picks</h2>
 
             {fights.length === 0 && (
-              <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-8 text-center text-gray-600">
+              <div className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-8 text-center text-gray-400">
                 Fights not posted yet. Check back soon.
               </div>
             )}
@@ -669,14 +669,14 @@ export default function PlayPage() {
                   className={`bg-gray-900/70 backdrop-blur-sm rounded-xl p-6 transition-opacity ${isLocked ? 'opacity-50' : ''}`}
                 >
                   <div className="flex justify-between items-center mb-4">
-                    <span className="text-gray-500 text-xs font-semibold tracking-wider">
+                    <span className="text-gray-300 text-xs font-semibold tracking-wider">
                       FIGHT {fight.fight_number} &bull; {fight.rounds} ROUNDS
                     </span>
                     <StatusBadge status={fight.status} />
                   </div>
 
                   <div className="mb-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Winner</p>
+                    <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Pick the Winner</p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { fighter: fight.fighter_a, odds: fight.odds_a },
@@ -715,7 +715,7 @@ export default function PlayPage() {
                   </div>
 
                   <div className="mb-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Method</p>
+                    <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Pick the Method</p>
                     <div className="grid grid-cols-3 gap-2">
                       {(['KO/TKO', 'Submission', 'Decision'] as Method[]).map((method) => (
                         <label
@@ -725,7 +725,7 @@ export default function PlayPage() {
                           } ${
                             pick?.method_pick === method
                               ? 'border-orange-500 bg-orange-900/30 text-white'
-                              : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                              : 'border-gray-700 text-gray-300 hover:border-gray-500'
                           }`}
                         >
                           <input
@@ -745,7 +745,7 @@ export default function PlayPage() {
 
                   {pick?.method_pick && pick.method_pick !== 'Decision' && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pick the Round</p>
+                      <p className="text-xs text-gray-300 uppercase tracking-wider mb-2">Pick the Round</p>
                       <div className="flex gap-2 flex-wrap">
                         {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => (
                           <button
@@ -756,7 +756,7 @@ export default function PlayPage() {
                             className={`w-12 h-10 rounded-xl border-2 text-sm font-bold transition-all ${
                               pick?.round_pick === String(r)
                                 ? 'border-purple-500 bg-purple-900/30 text-white'
-                                : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                                : 'border-gray-700 text-gray-300 hover:border-gray-500'
                             } ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                           >
                             R{r}
@@ -772,20 +772,20 @@ export default function PlayPage() {
                     if (!p) return null
                     return (
                       <div className="mt-4 pt-3 border-t border-gray-800">
-                        <p className="text-xs text-gray-600 uppercase tracking-wider mb-2">Potential Points</p>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Potential Points</p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                           <span className="text-sm">
-                            <span className="text-gray-500">Winner</span>{' '}
+                            <span className="text-gray-300">Winner</span>{' '}
                             <span className="text-green-400 font-bold">+{p.winner}</span>
                           </span>
                           {pick?.method_pick && (
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm text-gray-400">
                               + <span className="text-gray-400">Method</span>{' '}
                               <span className="text-blue-400 font-bold">+{p.method}</span>
                             </span>
                           )}
                           {pick?.method_pick && pick.method_pick !== 'Decision' && pick.round_pick && (
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm text-gray-400">
                               + <span className="text-gray-400">Round</span>{' '}
                               <span className="text-purple-400 font-bold">+{p.round}</span>
                             </span>
@@ -815,7 +815,7 @@ export default function PlayPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
+            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-xl transition-colors"
           >
             {submitting ? 'SUBMITTING...' : 'LOCK IN MY PICKS'}
           </button>
@@ -827,7 +827,7 @@ export default function PlayPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-50">
           <div className="max-w-3xl mx-auto flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-xs">{pickedCount} of {upcomingFights.length} fights picked</p>
+              <p className="text-gray-300 text-xs">{pickedCount} of {upcomingFights.length} fights picked</p>
               <p className="text-gray-400 text-sm font-medium">Max potential score</p>
             </div>
             <span className="text-green-400 font-black text-3xl">+{totalPotential}</span>

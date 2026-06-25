@@ -20,7 +20,7 @@ function QRModal({ onClose }: { onClose: () => void }) {
       >
         <p className="text-black font-black text-xl tracking-tight text-center">Scan to Play</p>
         <QRCodeSVG value={url} size={240} bgColor="#ffffff" fgColor="#000000" level="M" />
-        <p className="text-gray-500 text-xs text-center break-all">{url}</p>
+        <p className="text-gray-300 text-xs text-center break-all">{url}</p>
         <button
           onClick={onClose}
           className="mt-1 w-full bg-black text-white font-bold py-3 rounded-xl text-sm"
@@ -44,7 +44,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   return <h2 className="text-xl font-bold text-white mb-4">{children}</h2>
 }
 
-const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500 transition-colors placeholder-gray-600'
+const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500 transition-colors placeholder-gray-400'
 
 // ─── competition form ───────────────────────────────────────────────────────
 
@@ -148,12 +148,12 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
       {/* Expense cut */}
       <div>
         <label className="block text-xs text-gray-400 mb-1">Expense Cut %</label>
-        <p className="text-xs text-gray-600 mb-1.5">Portion of each buy-in that goes toward party cost recovery. Once the target is met, 100% goes to prizes.</p>
+        <p className="text-xs text-gray-400 mb-1.5">Portion of each buy-in that goes toward party cost recovery. Once the target is met, 100% goes to prizes.</p>
         <div className="flex items-center gap-2">
           <input type="number" min={0} max={100} value={form.expense_cut_pct} onChange={(e) => set('expense_cut_pct', e.target.value)} placeholder="50" className="w-24" style={{ background:'#1f2937', border:'1px solid #374151', borderRadius:'8px', padding:'6px 12px', color:'white', outline:'none', fontSize:'14px' }} />
           <span className="text-gray-400 text-sm">%</span>
           {feeNum > 0 && expenseCutNum > 0 && (
-            <span className="text-gray-500 text-xs">= ${(feeNum * expenseCutNum / 100).toFixed(2)} per player</span>
+            <span className="text-gray-300 text-xs">= ${(feeNum * expenseCutNum / 100).toFixed(2)} per player</span>
           )}
         </div>
       </div>
@@ -163,13 +163,13 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
         <div className="flex items-center justify-between mb-2">
           <div>
             <label className="block text-xs text-gray-400">Prize Splits</label>
-            <p className="text-xs text-gray-600">% of prize pool. Must total 100%.</p>
+            <p className="text-xs text-gray-400">% of prize pool. Must total 100%.</p>
           </div>
           <button type="button" onClick={addPlace} className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg transition-colors">+ Add Place</button>
         </div>
 
         {form.prize_splits.length === 0 && (
-          <p className="text-gray-700 text-xs italic py-2">No splits set — click &ldquo;Add Place&rdquo; to configure payouts.</p>
+          <p className="text-gray-400 text-xs italic py-2">No splits set — click &ldquo;Add Place&rdquo; to configure payouts.</p>
         )}
 
         <div className="space-y-2">
@@ -187,9 +187,9 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
                   className="w-20"
                   style={{ background:'#111827', border:'1px solid #374151', borderRadius:'8px', padding:'6px 10px', color:'white', outline:'none', fontSize:'14px' }}
                 />
-                <span className="text-gray-500 text-sm">%</span>
-                {dollarPreview && <span className="text-gray-600 text-xs">{dollarPreview}</span>}
-                <button type="button" onClick={() => removePlace(idx)} className="ml-auto text-gray-700 hover:text-red-500 text-xs transition-colors">Remove</button>
+                <span className="text-gray-300 text-sm">%</span>
+                {dollarPreview && <span className="text-gray-400 text-xs">{dollarPreview}</span>}
+                <button type="button" onClick={() => removePlace(idx)} className="ml-auto text-gray-400 hover:text-red-500 text-xs transition-colors">Remove</button>
               </div>
             )
           })}
@@ -208,37 +208,37 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Prize Calculator</p>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">If</label>
+              <label className="text-xs text-gray-300">If</label>
               <input
                 type="number" min={1} max={9999}
                 value={calcPlayers}
                 onChange={(e) => setCalcPlayers(e.target.value)}
                 className="w-16 text-center text-sm font-bold text-white bg-gray-800 border border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-red-500"
               />
-              <label className="text-xs text-gray-500">buy in</label>
+              <label className="text-xs text-gray-300">buy in</label>
             </div>
           </div>
 
           {calcCount > 0 ? (
             <div className="space-y-1.5">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Total pot</span>
+                <span className="text-gray-300">Total pot</span>
                 <span className="text-white font-semibold">${calcPot.toLocaleString()}</span>
               </div>
               {expenseCutNum > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">
+                  <span className="text-gray-300">
                     Expense cut ({expenseCutNum}%)
                     {partyCostTarget > 0 && thisPoolSurplus > 0 && <span className="text-green-500 ml-1">· target met!</span>}
                   </span>
                   <span className="text-orange-400 font-semibold">
                     −${actualExpenseTaken.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    {thisPoolSurplus > 0 && <span className="text-gray-600 text-xs"> (${thisPoolSurplus.toFixed(0)} back)</span>}
+                    {thisPoolSurplus > 0 && <span className="text-gray-400 text-xs"> (${thisPoolSurplus.toFixed(0)} back)</span>}
                   </span>
                 </div>
               )}
               {partyCostTarget > 0 && expenseCutNum > 0 && playersToBreakeven !== null && (
-                <div className="text-xs text-gray-600 pb-1">
+                <div className="text-xs text-gray-400 pb-1">
                   {playersToBreakeven <= 0
                     ? 'Party expenses already covered by other pools.'
                     : calcCount >= playersToBreakeven
@@ -259,7 +259,7 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
                     const amt = calcPrizePot * (pct / 100)
                     return (
                       <div key={s.place} className="flex justify-between text-sm">
-                        <span className="text-gray-500">{ordinal(s.place)} place ({pct}%)</span>
+                        <span className="text-gray-300">{ordinal(s.place)} place ({pct}%)</span>
                         <span className={`font-bold ${s.place === 1 ? 'text-yellow-400' : s.place === 2 ? 'text-gray-300' : s.place === 3 ? 'text-amber-600' : 'text-green-400'}`}>
                           ${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
@@ -269,11 +269,11 @@ function CompetitionForm({ initial, onSave, onCancel, saving, error, partyCostTa
                 </div>
               )}
               {form.prize_splits.length === 0 && expenseCutNum === 0 && (
-                <p className="text-gray-700 text-xs italic">Add an expense cut or prize splits above to see the breakdown.</p>
+                <p className="text-gray-400 text-xs italic">Add an expense cut or prize splits above to see the breakdown.</p>
               )}
             </div>
           ) : (
-            <p className="text-gray-700 text-xs italic">Enter a player count above.</p>
+            <p className="text-gray-400 text-xs italic">Enter a player count above.</p>
           )}
         </div>
       )}
@@ -464,14 +464,14 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                     placeholder="0"
                     className="w-20 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-yellow-500"
                   />
-                  <span className="text-gray-500 text-xs">entries</span>
+                  <span className="text-gray-300 text-xs">entries</span>
                 </div>
               ))}
             </div>
             <button
               onClick={generatePlayers}
               disabled={totalCount === 0}
-              className="bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-black font-black px-6 py-2.5 rounded-xl text-sm transition-colors"
+              className="bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-300 disabled:cursor-not-allowed text-black font-black px-6 py-2.5 rounded-xl text-sm transition-colors"
             >
               Generate {totalCount > 0 ? `${totalCount} Random Entries` : 'Entries'}
             </button>
@@ -491,7 +491,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
             >
               {simRan ? 'Re-run Simulation' : 'Run Fight Simulation'}
             </button>
-            {simRan && <span className="ml-3 text-gray-600 text-xs">Each run picks new random outcomes weighted by odds</span>}
+            {simRan && <span className="ml-3 text-gray-400 text-xs">Each run picks new random outcomes weighted by odds</span>}
           </div>
         )}
 
@@ -513,7 +513,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                 <div className="flex flex-wrap gap-2">
                   {results.map(res => (
                     <div key={res.fight_id} className="bg-gray-900 rounded-xl px-3 py-2 border border-gray-800 text-xs">
-                      <span className="text-gray-600 mr-1.5">F{res.fight_number}</span>
+                      <span className="text-gray-400 mr-1.5">F{res.fight_number}</span>
                       <span className="text-white font-bold">{res.winner}</span>
                       <span className="text-orange-400 ml-1.5">{res.method}{res.round != null ? ` R${res.round}` : ''}</span>
                     </div>
@@ -540,7 +540,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                   <div key={comp.id}>
                     <div className="flex flex-wrap items-baseline gap-3 mb-2">
                       <p className="text-xs text-yellow-700 font-bold uppercase tracking-widest">{comp.name} Results</p>
-                      <span className="text-gray-600 text-xs">{compPlayers.length} players · <span className="text-green-500 font-semibold">${prizePool.toFixed(0)} prize pool</span></span>
+                      <span className="text-gray-400 text-xs">{compPlayers.length} players · <span className="text-green-500 font-semibold">${prizePool.toFixed(0)} prize pool</span></span>
                       {partyCostTarget > 0 && <span className="text-orange-600 text-xs">${Math.min(thisExpContrib, partyCostTarget).toFixed(0)} to expenses</span>}
                     </div>
                     <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
@@ -552,7 +552,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                             const payout = split ? prizePool * split.pct / 100 : null
                             return (
                               <tr key={player.id} className={`border-b border-gray-800/40 ${rank === 1 ? 'bg-yellow-900/15' : rank <= 3 ? 'bg-gray-800/20' : ''}`}>
-                                <td className="px-3 py-2.5 text-gray-600 w-8 font-bold text-xs">{rank}</td>
+                                <td className="px-3 py-2.5 text-gray-400 w-8 font-bold text-xs">{rank}</td>
                                 <td className="px-2 py-2.5 text-white font-semibold">{player.name}</td>
                                 <td className="px-2 py-2.5 text-right font-black text-green-400">{total} pts</td>
                                 <td className="px-3 py-2.5 text-right w-20">
@@ -560,7 +560,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                                     <span className={`font-black ${rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-gray-300' : rank === 3 ? 'text-amber-600' : 'text-green-500'}`}>
                                       ${payout.toFixed(0)}
                                     </span>
-                                  ) : <span className="text-gray-700">—</span>}
+                                  ) : <span className="text-gray-400">—</span>}
                                 </td>
                               </tr>
                             )
@@ -570,12 +570,12 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
                       {splits.length > 0 && (
                         <div className="px-4 py-2.5 border-t border-gray-800 flex flex-wrap gap-4">
                           {splits.map(s => (
-                            <span key={s.place} className="text-xs text-gray-600">
+                            <span key={s.place} className="text-xs text-gray-400">
                               {ordinal(s.place)}{' '}
                               <span className={`font-bold ${s.place === 1 ? 'text-yellow-400' : s.place === 2 ? 'text-gray-300' : 'text-amber-600'}`}>
                                 ${(prizePool * s.pct / 100).toFixed(0)}
                               </span>
-                              <span className="text-gray-700 ml-0.5">({s.pct}%)</span>
+                              <span className="text-gray-400 ml-0.5">({s.pct}%)</span>
                             </span>
                           ))}
                         </div>
@@ -1100,9 +1100,9 @@ export default function AdminPage() {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-sm">
           <h1 className="text-2xl font-black text-white mb-1 text-center">ADMIN</h1>
-          <p className="text-gray-500 text-sm text-center mb-6">UFC Fight Night Pick'em</p>
+          <p className="text-gray-300 text-sm text-center mb-6">UFC Fight Night Pick'em</p>
           <form onSubmit={handleAuth} className="space-y-4">
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Admin password" autoFocus className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Admin password" autoFocus className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-red-500 transition-colors" />
             {authError && <p className="text-red-400 text-sm">{authError}</p>}
             <button type="submit" disabled={authLoading} className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-bold py-3 rounded-xl transition-colors">{authLoading ? 'Checking…' : 'Enter'}</button>
           </form>
@@ -1138,7 +1138,7 @@ export default function AdminPage() {
       <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-black text-white">UFC FIGHT NIGHT &mdash; ADMIN</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Competitions, fights, players &amp; scoring</p>
+          <p className="text-gray-300 text-sm mt-0.5">Competitions, fights, players &amp; scoring</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -1173,18 +1173,18 @@ export default function AdminPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
         <div className="bg-gray-900 rounded-xl p-4 text-center">
           <div className="text-4xl font-black text-green-400">{paidCount}</div>
-          <div className="text-gray-500 text-sm mt-1">Players Paid</div>
+          <div className="text-gray-300 text-sm mt-1">Players Paid</div>
         </div>
         <div className="bg-gray-900 rounded-xl p-4 text-center">
           <div className="text-4xl font-black text-blue-400">{activatedCount}</div>
-          <div className="text-gray-500 text-sm mt-1">Activated</div>
+          <div className="text-gray-300 text-sm mt-1">Activated</div>
         </div>
         {competitions.map((comp) => {
           const count = players.filter((p) => p.competition_id === comp.id).length
           return (
             <div key={comp.id} className="bg-gray-900 rounded-xl p-4 text-center">
               <div className="text-4xl font-black text-orange-400">{count}</div>
-              <div className="text-gray-500 text-sm mt-1 truncate">{comp.name} ({comp.entry_fee})</div>
+              <div className="text-gray-300 text-sm mt-1 truncate">{comp.name} ({comp.entry_fee})</div>
             </div>
           )
         })}
@@ -1197,7 +1197,7 @@ export default function AdminPage() {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-              activeTab === tab ? 'bg-white text-black' : 'text-gray-500 hover:text-white'
+              activeTab === tab ? 'bg-white text-black' : 'text-gray-300 hover:text-white'
             }`}
           >
             {tab}
@@ -1212,7 +1212,7 @@ export default function AdminPage() {
           {/* Event Title */}
           <div>
             <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1">Event Title</label>
-            <p className="text-xs text-gray-600 mb-2">Shown as the heading on the player page. Leave blank for the default.</p>
+            <p className="text-xs text-gray-400 mb-2">Shown as the heading on the player page. Leave blank for the default.</p>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -1229,13 +1229,13 @@ export default function AdminPage() {
                 {eventTitleSaving ? 'Saving…' : 'Save'}
               </button>
             </div>
-            {eventTitle && <p className="text-gray-600 text-xs mt-1.5">Current: <span className="text-gray-400">{eventTitle}</span></p>}
+            {eventTitle && <p className="text-gray-400 text-xs mt-1.5">Current: <span className="text-gray-400">{eventTitle}</span></p>}
           </div>
 
           {/* Poster Upload */}
           <div>
             <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1">Background Poster</label>
-            <p className="text-xs text-gray-600 mb-2">Shown as a subtle ambient background on all pages.</p>
+            <p className="text-xs text-gray-400 mb-2">Shown as a subtle ambient background on all pages.</p>
             <div className="flex items-center gap-3">
               <label className={`inline-flex items-center gap-2 cursor-pointer bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${posterUploading ? 'opacity-50 cursor-wait' : ''}`}>
                 <input
@@ -1273,7 +1273,7 @@ export default function AdminPage() {
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <label className="text-sm text-gray-400 shrink-0">Expense Target</label>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 text-sm">$</span>
+              <span className="text-gray-300 text-sm">$</span>
               <input
                 type="number" min={0} step={1}
                 value={partyCostInput}
@@ -1289,7 +1289,7 @@ export default function AdminPage() {
             >
               {partyCostSaving ? 'Saving…' : 'Set Target'}
             </button>
-            {partyCostTarget > 0 && <span className="text-gray-600 text-xs">Current target: ${partyCostTarget.toLocaleString()}</span>}
+            {partyCostTarget > 0 && <span className="text-gray-400 text-xs">Current target: ${partyCostTarget.toLocaleString()}</span>}
           </div>
 
           {partyCostTarget > 0 && (() => {
@@ -1304,7 +1304,7 @@ export default function AdminPage() {
                     <span className={fullyFunded ? 'text-green-400 font-semibold' : 'text-gray-400'}>
                       {fullyFunded ? 'Party expenses fully covered!' : `$${expenseCovered.toFixed(0)} of $${partyCostTarget.toLocaleString()} recovered`}
                     </span>
-                    <span className="text-gray-500">{pct.toFixed(0)}%</span>
+                    <span className="text-gray-300">{pct.toFixed(0)}%</span>
                   </div>
                   <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
                     <div
@@ -1312,7 +1312,7 @@ export default function AdminPage() {
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  {!fullyFunded && <p className="text-gray-600 text-xs mt-1">${expenseStillNeeded.toFixed(0)} still needed</p>}
+                  {!fullyFunded && <p className="text-gray-400 text-xs mt-1">${expenseStillNeeded.toFixed(0)} still needed</p>}
                   {surplus > 0 && <p className="text-green-600 text-xs mt-1">+${surplus.toFixed(0)} surplus returned to prize pools</p>}
                 </div>
                 {/* Per-pool breakdown */}
@@ -1321,8 +1321,8 @@ export default function AdminPage() {
                     {poolData.map(({ comp, paidCount: pc, fee, expenseContrib, actualPrizePool }) => {
                       if (pc === 0) return null
                       return (
-                        <div key={comp.id} className="flex flex-wrap gap-x-3 gap-y-0 text-xs text-gray-600">
-                          <span className="text-gray-500 font-medium">{comp.name}</span>
+                        <div key={comp.id} className="flex flex-wrap gap-x-3 gap-y-0 text-xs text-gray-400">
+                          <span className="text-gray-300 font-medium">{comp.name}</span>
                           <span>{pc} paid × ${fee.toFixed(0)} × {comp.expense_cut_pct ?? 50}%</span>
                           <span className="text-orange-500">= ${expenseContrib.toFixed(0)} to expenses</span>
                           <span className="text-green-500">→ ${actualPrizePool.toFixed(0)} prize pool</span>
@@ -1336,7 +1336,7 @@ export default function AdminPage() {
           })()}
 
           {partyCostTarget === 0 && (
-            <p className="text-gray-700 text-xs italic">Set a dollar amount above to track party expense recovery across all pools.</p>
+            <p className="text-gray-400 text-xs italic">Set a dollar amount above to track party expense recovery across all pools.</p>
           )}
         </div>
 
@@ -1355,7 +1355,7 @@ export default function AdminPage() {
         )}
 
         {competitions.length === 0 && !showAddComp && (
-          <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-600">
+          <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-400">
             No prize pools yet. Click <span className="text-red-500 font-semibold">+ Add Pool</span> to create your first one.
           </div>
         )}
@@ -1387,19 +1387,19 @@ export default function AdminPage() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-white font-bold text-lg">{comp.name}</span>
                     <span className="text-red-400 font-black">{comp.entry_fee}</span>
-                    <span className="text-gray-500 text-sm">{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
-                    {(comp.expense_cut_pct ?? 50) > 0 && <span className="text-gray-600 text-xs">{comp.expense_cut_pct ?? 50}% expense cut</span>}
+                    <span className="text-gray-300 text-sm">{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
+                    {(comp.expense_cut_pct ?? 50) > 0 && <span className="text-gray-400 text-xs">{comp.expense_cut_pct ?? 50}% expense cut</span>}
                   </div>
-                  {comp.description && <p className="text-gray-500 text-sm mt-0.5">{comp.description}</p>}
+                  {comp.description && <p className="text-gray-300 text-sm mt-0.5">{comp.description}</p>}
                   {paidPlayerCount > 0 && poolRecovery && (
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                      <span className="text-gray-500">Pot: <span className="text-white font-semibold">${poolRecovery.totalPaid.toFixed(0)}</span></span>
+                      <span className="text-gray-300">Pot: <span className="text-white font-semibold">${poolRecovery.totalPaid.toFixed(0)}</span></span>
                       {poolRecovery.expenseContrib > 0 && (
-                        <span className="text-gray-500">Expenses: <span className="text-orange-400 font-semibold">${Math.min(poolRecovery.expenseContrib, partyCostTarget > 0 ? poolRecovery.expenseContrib : poolRecovery.expenseContrib).toFixed(0)}</span></span>
+                        <span className="text-gray-300">Expenses: <span className="text-orange-400 font-semibold">${Math.min(poolRecovery.expenseContrib, partyCostTarget > 0 ? poolRecovery.expenseContrib : poolRecovery.expenseContrib).toFixed(0)}</span></span>
                       )}
-                      <span className="text-gray-500">Prize pool: <span className="text-green-400 font-semibold">${poolRecovery.actualPrizePool.toFixed(0)}</span></span>
+                      <span className="text-gray-300">Prize pool: <span className="text-green-400 font-semibold">${poolRecovery.actualPrizePool.toFixed(0)}</span></span>
                       {(comp.prize_splits ?? []).map((s) => (
-                        <span key={s.place} className="text-gray-600">{ordinal(s.place)}: <span className="text-green-500">${(poolRecovery.actualPrizePool * s.pct / 100).toFixed(0)}</span> ({s.pct}%)</span>
+                        <span key={s.place} className="text-gray-400">{ordinal(s.place)}: <span className="text-green-500">${(poolRecovery.actualPrizePool * s.pct / 100).toFixed(0)}</span> ({s.pct}%)</span>
                       ))}
                     </div>
                   )}
@@ -1447,9 +1447,9 @@ export default function AdminPage() {
             <div className="flex justify-between items-start mb-3">
               <div>
                 <p className="text-white font-bold">Import UFC Card from The Odds API</p>
-                <p className="text-gray-500 text-xs mt-0.5">Fetches upcoming MMA events with American odds. Rounds default to 3 — edit main/co-main events to 5 after import.</p>
+                <p className="text-gray-300 text-xs mt-0.5">Fetches upcoming MMA events with American odds. Rounds default to 3 — edit main/co-main events to 5 after import.</p>
               </div>
-              <button onClick={() => { setShowImport(false); setImportEvents([]); setImportError(''); setImportSuccess('') }} className="text-gray-600 hover:text-gray-400 text-xl leading-none">&times;</button>
+              <button onClick={() => { setShowImport(false); setImportEvents([]); setImportError(''); setImportSuccess('') }} className="text-gray-400 hover:text-gray-400 text-xl leading-none">&times;</button>
             </div>
 
             {importEvents.length === 0 && !importLoading && !importError && (
@@ -1474,7 +1474,7 @@ export default function AdminPage() {
                       <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
                         <div>
                           <p className="text-white font-bold">{label}</p>
-                          <p className="text-gray-500 text-xs">{group.fights.length} fights with odds</p>
+                          <p className="text-gray-300 text-xs">{group.fights.length} fights with odds</p>
                         </div>
                         <button
                           onClick={() => importCard(group)}
@@ -1485,7 +1485,7 @@ export default function AdminPage() {
                         </button>
                       </div>
                       {/* Select all toggle */}
-                      <label className="flex items-center gap-2 text-xs text-gray-500 mb-2 cursor-pointer select-none">
+                      <label className="flex items-center gap-2 text-xs text-gray-300 mb-2 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={allChecked}
@@ -1504,15 +1504,15 @@ export default function AdminPage() {
                               className="w-4 h-4 accent-orange-500 shrink-0"
                             />
                             <span className="text-white font-semibold">{f.fighter_a}</span>
-                            <span className={`text-xs font-bold ${f.odds_a > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                            <span className={`text-xs font-bold ${f.odds_a > 0 ? 'text-green-400' : 'text-gray-300'}`}>
                               {f.odds_a > 0 ? `+${f.odds_a}` : f.odds_a}
                             </span>
-                            <span className="text-gray-600">vs</span>
+                            <span className="text-gray-400">vs</span>
                             <span className="text-white font-semibold">{f.fighter_b}</span>
-                            <span className={`text-xs font-bold ${f.odds_b > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                            <span className={`text-xs font-bold ${f.odds_b > 0 ? 'text-green-400' : 'text-gray-300'}`}>
                               {f.odds_b > 0 ? `+${f.odds_b}` : f.odds_b}
                             </span>
-                            {f.book && <span className="text-gray-700 text-xs ml-1">{f.book}</span>}
+                            {f.book && <span className="text-gray-400 text-xs ml-1">{f.book}</span>}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1523,7 +1523,7 @@ export default function AdminPage() {
                               className={`ml-auto text-xs font-bold px-2 py-0.5 rounded border transition-colors ${
                                 (fightRoundsOverrides[`${group.date}-${i}`] ?? 3) === 5
                                   ? 'border-yellow-600 text-yellow-400 bg-yellow-900/20'
-                                  : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                                  : 'border-gray-700 text-gray-300 hover:border-gray-500'
                               }`}
                             >
                               {(fightRoundsOverrides[`${group.date}-${i}`] ?? 3) === 5 ? '5R' : '3R'}
@@ -1546,7 +1546,7 @@ export default function AdminPage() {
         )}
 
         {fights.length === 0 && !showAddFight && (
-          <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-600">
+          <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-400">
             No fights yet. Click <span className="text-red-500 font-semibold">+ Add Fight</span> to set up the card.
           </div>
         )}
@@ -1575,13 +1575,13 @@ export default function AdminPage() {
                 <div className="p-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-gray-500 text-xs font-semibold">FIGHT {fight.fight_number}</span>
+                      <span className="text-gray-300 text-xs font-semibold">FIGHT {fight.fight_number}</span>
                       <StatusBadge status={fight.status} />
-                      <span className="text-gray-600 text-xs">{fight.rounds}R</span>
+                      <span className="text-gray-400 text-xs">{fight.rounds}R</span>
                     </div>
                     <div className="text-white font-bold">
                       {fight.fighter_a} <span className={`text-sm font-bold ${fight.odds_a > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_a)})</span>
-                      <span className="text-gray-600 mx-2">vs</span>
+                      <span className="text-gray-400 mx-2">vs</span>
                       {fight.fighter_b} <span className={`text-sm font-bold ${fight.odds_b > 0 ? 'text-green-400' : 'text-gray-400'}`}>({formatOdds(fight.odds_b)})</span>
                     </div>
                   </div>
@@ -1603,9 +1603,9 @@ export default function AdminPage() {
                 {/* Jackpot controls — upcoming + locked */}
                 {fight.status !== 'complete' && (
                   <div className="px-5 py-3 border-t border-gray-800/60 bg-gray-800/20 flex flex-wrap items-center gap-3">
-                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Jackpot</span>
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Jackpot</span>
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-600">$</span>
+                      <span className="text-xs text-gray-400">$</span>
                       <input
                         type="text"
                         defaultValue={fight.stoppage_bet_fee ?? '20'}
@@ -1619,7 +1619,7 @@ export default function AdminPage() {
                     >
                       {fight.stoppage_bet_open ? '● OPEN — tap to close' : '○ Open Betting'}
                     </button>
-                    {fightBetCount > 0 && <span className="text-xs text-gray-500">{fightBetCount} bet{fightBetCount !== 1 ? 's' : ''}</span>}
+                    {fightBetCount > 0 && <span className="text-xs text-gray-300">{fightBetCount} bet{fightBetCount !== 1 ? 's' : ''}</span>}
                   </div>
                 )}
 
@@ -1635,11 +1635,11 @@ export default function AdminPage() {
                             ✓ {fight.result_winner} by {fight.result_method}{fight.result_round != null ? ` (R${fight.result_round})` : ''}
                           </p>
                           {stoppageWinners[fight.id] ? (
-                            <p className={`text-xs mt-0.5 ${stoppageWinners[fight.id].startsWith('No winner') ? 'text-gray-500' : 'text-yellow-400'}`}>
+                            <p className={`text-xs mt-0.5 ${stoppageWinners[fight.id].startsWith('No winner') ? 'text-gray-300' : 'text-yellow-400'}`}>
                               Jackpot: {stoppageWinners[fight.id]}
                             </p>
                           ) : fight.stoppage_actual_round != null ? (
-                            <p className="text-xs text-gray-600 mt-0.5">
+                            <p className="text-xs text-gray-400 mt-0.5">
                               Stoppage: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
                             </p>
                           ) : null}
@@ -1664,7 +1664,7 @@ export default function AdminPage() {
                               setStopActual((prev) => ({ ...prev, [fight.id]: { round: String(fight.stoppage_actual_round), minute: String(fight.stoppage_actual_minute ?? ''), second: String(fight.stoppage_actual_second ?? '0') } }))
                             }
                           }}
-                          className="text-xs text-gray-600 hover:text-gray-300 shrink-0 pt-0.5"
+                          className="text-xs text-gray-400 hover:text-gray-300 shrink-0 pt-0.5"
                         >
                           Edit
                         </button>
@@ -1681,7 +1681,7 @@ export default function AdminPage() {
                     <div className="px-5 py-5 border-t border-gray-800 space-y-4">
                       {/* Winner buttons */}
                       <div>
-                        <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">Winner</p>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2">Winner</p>
                         <div className="grid grid-cols-2 gap-2">
                           {[fight.fighter_a, fight.fighter_b].map((fighter) => (
                             <button
@@ -1697,7 +1697,7 @@ export default function AdminPage() {
 
                       {/* Method buttons */}
                       <div>
-                        <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-2">Method</p>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2">Method</p>
                         <div className="grid grid-cols-3 gap-2">
                           {(['KO/TKO', 'Submission', 'Decision'] as const).map((method) => (
                             <button
@@ -1714,12 +1714,12 @@ export default function AdminPage() {
                       {/* Stoppage time — 3-step flow matching player UI */}
                       {form.method && form.method !== 'Decision' && (
                         <div>
-                          <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold mb-3">When did it end?</p>
+                          <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-3">When did it end?</p>
 
                           {/* Step 1: Round */}
                           {!roundSelected && (
                             <div>
-                              <p className="text-xs text-gray-500 mb-2">Select a round</p>
+                              <p className="text-xs text-gray-300 mb-2">Select a round</p>
                               <div className="flex gap-2">
                                 {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => (
                                   <button
@@ -1738,8 +1738,8 @@ export default function AdminPage() {
                           {roundSelected && !minuteSelected && (
                             <div>
                               <div className="flex items-center gap-3 mb-3">
-                                <button onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { round: '', minute: '', second: '0' } }))} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {stop.round} — tap a minute</p>
+                                <button onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { round: '', minute: '', second: '0' } }))} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-300 uppercase tracking-wider">Round {stop.round} — tap a minute</p>
                               </div>
                               <div className="flex gap-2">
                                 {[0, 1, 2, 3, 4].map((m) => (
@@ -1759,21 +1759,21 @@ export default function AdminPage() {
                           {roundSelected && minuteSelected && (
                             <div>
                               <div className="flex items-center gap-3 mb-4">
-                                <button onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: '', second: '0' } }))} className="text-gray-500 hover:text-gray-300 text-sm">← Back</button>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider">Round {stop.round}, Minute {stop.minute} — slide to pick second</p>
+                                <button onClick={() => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], minute: '', second: '0' } }))} className="text-gray-300 hover:text-gray-300 text-sm">← Back</button>
+                                <p className="text-xs text-gray-300 uppercase tracking-wider">Round {stop.round}, Minute {stop.minute} — slide to pick second</p>
                               </div>
                               <div className="text-center mb-4">
                                 <p className="text-5xl font-black text-yellow-400 tabular-nums">
                                   {stop.minute}:{String(curSecond).padStart(2, '0')}
                                 </p>
-                                <p className="text-gray-500 text-sm mt-1">Round {stop.round}</p>
+                                <p className="text-gray-300 text-sm mt-1">Round {stop.round}</p>
                               </div>
                               <input
                                 type="range" min={0} max={59} value={curSecond}
                                 onChange={(e) => setStopActual((prev) => ({ ...prev, [fight.id]: { ...prev[fight.id], second: e.target.value } }))}
                                 className="w-full accent-yellow-500 mb-2"
                               />
-                              <div className="flex justify-between text-xs text-gray-600 mb-2">
+                              <div className="flex justify-between text-xs text-gray-400 mb-2">
                                 <span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:59</span>
                               </div>
                             </div>
@@ -1803,7 +1803,7 @@ export default function AdminPage() {
         <section className="mb-10">
           <SectionHeader>Manage Players</SectionHeader>
           {players.length === 0 ? (
-            <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-600">No players yet.</div>
+            <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-400">No players yet.</div>
           ) : (
             <div className="space-y-2">
               {players.map((player) => {
@@ -1819,13 +1819,13 @@ export default function AdminPage() {
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-white font-bold">{player.name}</span>
-                        {comp && <span className="text-xs text-gray-500">{comp.name}</span>}
+                        {comp && <span className="text-xs text-gray-300">{comp.name}</span>}
                         {!player.activated && <span className="text-xs bg-orange-900/40 text-orange-400 px-2 py-0.5 rounded-full">Unpaid</span>}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <div className="flex items-center gap-3 text-xs text-gray-300">
                         <span>{playerPicks.length}/{fights.length} picks</span>
                         {playerBets.length > 0 && <span className="text-yellow-600">jackpot</span>}
-                        <span className="text-gray-600">{isExpanded ? '▲' : '▼'}</span>
+                        <span className="text-gray-400">{isExpanded ? '▲' : '▼'}</span>
                       </div>
                     </button>
 
@@ -1833,14 +1833,14 @@ export default function AdminPage() {
                       <div className="border-t border-gray-800 px-5 py-4 space-y-5">
                         {/* Pick'em picks */}
                         <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Pick&apos;em Picks</p>
+                          <p className="text-xs text-gray-300 uppercase tracking-wider font-semibold mb-3">Pick&apos;em Picks</p>
                           <div className="space-y-2">
                             {fights.map((fight) => {
                               const edit = getPickEdit(player.id, fight.id)
                               const key = `${player.id}-${fight.id}`
                               return (
                                 <div key={fight.id} className="flex flex-wrap items-center gap-2">
-                                  <span className="text-xs text-gray-500 w-14 shrink-0">Fight {fight.fight_number}</span>
+                                  <span className="text-xs text-gray-300 w-14 shrink-0">Fight {fight.fight_number}</span>
                                   <select
                                     value={edit.winner}
                                     onChange={(e) => setPickEditField(player.id, fight.id, 'winner', e.target.value)}
@@ -1885,24 +1885,24 @@ export default function AdminPage() {
                         {/* Jackpot bet */}
                         {playerBets.length > 0 && (
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Jackpot Bet</p>
+                            <p className="text-xs text-gray-300 uppercase tracking-wider font-semibold mb-3">Jackpot Bet</p>
                             <div className="space-y-2">
                               {playerBets.map((bet) => {
                                 const fightForBet = fights.find((f) => f.id === bet.fight_id)
                                 const edit = getBetEdit(bet)
                                 return (
                                   <div key={bet.id} className="flex flex-wrap items-center gap-2">
-                                    <span className="text-xs text-gray-500 w-14 shrink-0">Fight {fightForBet?.fight_number}</span>
+                                    <span className="text-xs text-gray-300 w-14 shrink-0">Fight {fightForBet?.fight_number}</span>
                                     <div className="flex items-center gap-1">
-                                      <span className="text-xs text-gray-600">R</span>
+                                      <span className="text-xs text-gray-400">R</span>
                                       <input type="number" min={1} max={fightForBet?.rounds ?? 5} value={edit.round} onChange={(e) => setBetEdits((prev) => ({ ...prev, [bet.id]: { ...getBetEdit(bet), round: e.target.value } }))} className="w-10 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs" />
                                     </div>
                                     <div className="flex items-center gap-1">
-                                      <span className="text-xs text-gray-600">min</span>
+                                      <span className="text-xs text-gray-400">min</span>
                                       <input type="number" min={0} max={4} value={edit.minute} onChange={(e) => setBetEdits((prev) => ({ ...prev, [bet.id]: { ...getBetEdit(bet), minute: e.target.value } }))} className="w-10 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs" />
                                     </div>
                                     <div className="flex items-center gap-1">
-                                      <span className="text-xs text-gray-600">sec</span>
+                                      <span className="text-xs text-gray-400">sec</span>
                                       <input type="number" min={0} max={59} value={edit.second} onChange={(e) => setBetEdits((prev) => ({ ...prev, [bet.id]: { ...getBetEdit(bet), second: e.target.value } }))} className="w-10 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs" />
                                     </div>
                                     <button
@@ -1998,13 +1998,13 @@ export default function AdminPage() {
             </div>
             <div className="bg-gray-900 rounded-xl overflow-x-auto">
               {allPending.length === 0 ? (
-                <div className="px-4 py-10 text-center text-gray-600">All payments collected</div>
+                <div className="px-4 py-10 text-center text-gray-400">All payments collected</div>
               ) : (
                 <table className="w-full text-sm whitespace-nowrap">
                   <thead>
                     <tr className="border-b border-gray-800">
                       {['Name', 'Owes', 'Amount', 'Activate'].map((h) => (
-                        <th key={h} className="text-left text-xs text-gray-500 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
+                        <th key={h} className="text-left text-xs text-gray-300 uppercase tracking-wider px-4 py-3 font-semibold">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -2132,14 +2132,14 @@ export default function AdminPage() {
                   </button>
                 </div>
               )}
-              {allPaid && <span className="text-gray-600 text-sm font-semibold">All paid ✓</span>}
+              {allPaid && <span className="text-gray-400 text-sm font-semibold">All paid ✓</span>}
             </div>
 
             {/* Player totals summary */}
             {sortedPlayerTotals.length > 0 && (
               <div className="bg-gray-900 rounded-xl overflow-hidden mb-4">
                 <div className="px-5 py-3 border-b border-gray-800">
-                  <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Winner Totals</span>
+                  <span className="text-xs text-gray-300 uppercase tracking-wider font-semibold">Winner Totals</span>
                 </div>
                 <table className="w-full text-sm">
                   <tbody>
@@ -2150,9 +2150,9 @@ export default function AdminPage() {
                           <div className="flex flex-wrap gap-2">
                             {entry.items.map((item, i) => (
                               <span key={i} className="flex items-center gap-1">
-                                <span className="text-gray-500 text-xs">{item.label}</span>
+                                <span className="text-gray-300 text-xs">{item.label}</span>
                                 <span className={`font-bold text-sm ${item.color}`}>${item.amount}</span>
-                                {i < entry.items.length - 1 && <span className="text-gray-700 ml-1">+</span>}
+                                {i < entry.items.length - 1 && <span className="text-gray-400 ml-1">+</span>}
                               </span>
                             ))}
                           </div>
@@ -2160,7 +2160,7 @@ export default function AdminPage() {
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
                           <span className="text-white font-black text-lg mr-3">${entry.total}</span>
                           {entry.allPaid
-                            ? <span className="text-xs font-semibold text-gray-600 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
+                            ? <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
                             : <button
                                 onClick={() => markPlayerAllPaid(entry.playerName, entry.unpaidPickEmId, entry.unpaidBetIds)}
                                 disabled={payingPlayer === entry.playerName}
@@ -2181,18 +2181,18 @@ export default function AdminPage() {
               {pickEmPayouts.length > 0 && (
                 <div className="bg-gray-900 rounded-xl overflow-hidden">
                   <div className="px-5 py-3 border-b border-gray-800">
-                    <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Pick&apos;em Prizes</span>
+                    <span className="text-xs text-gray-300 uppercase tracking-wider font-semibold">Pick&apos;em Prizes</span>
                   </div>
                   <table className="w-full text-sm whitespace-nowrap">
                     <tbody>
                       {pickEmPayouts.map((payout) => (
                         <tr key={`${payout.playerId}-${payout.label}`} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                           <td className="px-4 py-3 text-white font-semibold">{payout.playerName}</td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{payout.label}</td>
+                          <td className="px-4 py-3 text-gray-300 text-xs">{payout.label}</td>
                           <td className="px-4 py-3 text-green-400 font-black text-base">${payout.amount}</td>
                           <td className="px-4 py-3 text-right">
                             {payout.paid
-                              ? <span className="text-xs font-semibold text-gray-600 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
+                              ? <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
                               : <button onClick={() => markPickEmPaid(payout.playerId)} className="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-colors">Mark Paid</button>
                             }
                           </td>
@@ -2206,18 +2206,18 @@ export default function AdminPage() {
               {jackpotPayouts.length > 0 && (
                 <div className="bg-gray-900 rounded-xl overflow-hidden">
                   <div className="px-5 py-3 border-b border-gray-800">
-                    <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Jackpot Winners</span>
+                    <span className="text-xs text-gray-300 uppercase tracking-wider font-semibold">Jackpot Winners</span>
                   </div>
                   <table className="w-full text-sm whitespace-nowrap">
                     <tbody>
                       {jackpotPayouts.map((payout) => (
                         <tr key={payout.betId} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                           <td className="px-4 py-3 text-white font-semibold">{payout.playerName}</td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{payout.label}</td>
+                          <td className="px-4 py-3 text-gray-300 text-xs">{payout.label}</td>
                           <td className="px-4 py-3 text-yellow-400 font-black text-base">${payout.amount}</td>
                           <td className="px-4 py-3 text-right">
                             {payout.paid
-                              ? <span className="text-xs font-semibold text-gray-600 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
+                              ? <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-3 py-1.5 rounded-lg">Paid</span>
                               : <button onClick={() => markJackpotPaid(payout.betId)} className="bg-blue-700 hover:bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition-colors">Mark Paid</button>
                             }
                           </td>
@@ -2239,7 +2239,7 @@ export default function AdminPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-white font-semibold">Reset Event</p>
-              <p className="text-gray-500 text-sm">Deletes all fights, players, picks, and scores. Prize pools are kept.</p>
+              <p className="text-gray-300 text-sm">Deletes all fights, players, picks, and scores. Prize pools are kept.</p>
             </div>
             {!resetConfirm ? (
               <button onClick={() => setResetConfirm(true)} className="bg-red-900/60 hover:bg-red-800 text-red-300 border border-red-700 font-bold px-5 py-2 rounded-lg text-sm transition-colors">Reset Event</button>
