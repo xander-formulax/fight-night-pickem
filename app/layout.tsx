@@ -15,7 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${inter.className} bg-gray-950 text-white min-h-screen`}>
         <PosterBackground />
-        {children}
+        <div className="relative min-h-screen bg-black/55 backdrop-blur-sm">
+          {children}
+        </div>
       </body>
     </html>
   )
