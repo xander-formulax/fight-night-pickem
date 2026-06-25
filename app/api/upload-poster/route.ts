@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { setStorageConfig } from '@/lib/storage-config'
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData()
@@ -13,17 +14,16 @@ export async function POST(request: NextRequest) {
   await supabase.storage.createBucket('assets', { public: true }).catch(() => {})
 
   const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
-  const path = `poster.${ext}`
 
-  const { error } = await supabase.storage.from('assets').upload(path, buffer, {
+  const { error } = await supabase.storage.from('assets').upload(`poster.${ext}`, buffer, {
     contentType: file.type,
     upsert: true,
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path)
+  const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(`poster.${ext}`)
 
-  await supabase.from('event_settings').upsert({ id: 1, poster_url: publicUrl })
+  await setStorageConfig(supabase, { poster_url: publicUrl })
 
   return NextResponse.json({ url: publicUrl })
 }
