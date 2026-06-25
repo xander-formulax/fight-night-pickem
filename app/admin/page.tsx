@@ -8,7 +8,18 @@ import type { Competition, Fight, Pick, Player, PrizeSplit, Score, StoppageBet }
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
 function QRModal({ onClose }: { onClose: () => void }) {
-  const url = typeof window !== 'undefined' ? `${window.location.origin}/play` : '/play'
+  const defaultUrl = typeof window !== 'undefined' ? `${window.location.origin}/play` : '/play'
+  const [customUrl, setCustomUrl] = useState('')
+  const [copied, setCopied] = useState(false)
+  const url = customUrl.trim() || defaultUrl
+
+  function copyUrl() {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
@@ -20,13 +31,31 @@ function QRModal({ onClose }: { onClose: () => void }) {
       >
         <p className="text-black font-black text-xl tracking-tight text-center">Scan to Play</p>
         <QRCodeSVG value={url} size={240} bgColor="#ffffff" fgColor="#000000" level="M" />
-        <p className="text-gray-300 text-xs text-center break-all">{url}</p>
-        <button
-          onClick={onClose}
-          className="mt-1 w-full bg-black text-white font-bold py-3 rounded-xl text-sm"
-        >
-          Close
-        </button>
+        <p className="text-gray-600 text-xs text-center break-all font-mono">{url}</p>
+        <div className="w-full flex gap-2">
+          <button
+            onClick={copyUrl}
+            className="flex-1 bg-gray-100 text-gray-800 font-bold py-2.5 rounded-xl text-sm border border-gray-200"
+          >
+            {copied ? 'Copied!' : 'Copy URL'}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 bg-black text-white font-bold py-2.5 rounded-xl text-sm"
+          >
+            Close
+          </button>
+        </div>
+        <div className="w-full">
+          <p className="text-gray-400 text-xs mb-1">Override URL (if QR should point elsewhere)</p>
+          <input
+            type="text"
+            value={customUrl}
+            onChange={(e) => setCustomUrl(e.target.value)}
+            placeholder={defaultUrl}
+            className="w-full text-xs text-gray-700 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 placeholder-gray-300"
+          />
+        </div>
       </div>
     </div>
   )
