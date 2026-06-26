@@ -444,8 +444,8 @@ function findJackpotWinner(
   return winner
 }
 
-function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
-  competitions: Competition[]; fights: Fight[]; partyCostTarget: number; onExit: () => void
+function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled, globalJackpotFee, onExit }: {
+  competitions: Competition[]; fights: Fight[]; partyCostTarget: number; jackpotEnabled: boolean; globalJackpotFee: string; onExit: () => void
 }) {
   const [counts, setCounts] = useState<Record<string, string>>({})
   const [jackpotAvgEntries, setJackpotAvgEntries] = useState('8')
@@ -454,8 +454,9 @@ function SimulationPanel({ competitions, fights, partyCostTarget, onExit }: {
   const [results, setResults] = useState<SimResult[]>([])
   const [simRan, setSimRan] = useState(false)
 
-  const jackpotFights = fights.filter(f => f.stoppage_bet_open)
-  const defaultFee = jackpotFights[0]?.stoppage_bet_fee ?? '20'
+  // With the global jackpot model, every fight is a potential jackpot fight when the game is on.
+  const jackpotFights = jackpotEnabled ? fights : []
+  const defaultFee = globalJackpotFee || '20'
   const effectiveFee = parseFloat(jackpotFee || defaultFee) || 20
 
   function generatePlayers() {
@@ -895,10 +896,9 @@ export default function AdminPage() {
   const [savingResults, setSavingResults] = useState<Record<string, boolean>>({})
 
   // fight management sheets
-  const [lockConfirmFight, setLockConfirmFight] = useState<Fight | null>(null)
-  const [lockingFight, setLockingFight] = useState(false)
   const [resultsSheetFightId, setResultsSheetFightId] = useState<string | null>(null)
   const [sheetSaveState, setSheetSaveState] = useState<'idle' | 'saving' | 'done'>('idle')
+  const [lifecycleConfirm, setLifecycleConfirm] = useState<null | { title: string; message: string; confirmLabel: string; onConfirm: () => void | Promise<void> }>(null)
 
   // stoppage jackpot
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
@@ -934,6 +934,13 @@ export default function AdminPage() {
   const [posterUrl, setPosterUrl] = useState('')
   const [posterError, setPosterError] = useState('')
 
+  // jackpot + event lifecycle
+  const [jackpotEnabled, setJackpotEnabled] = useState(false)
+  const [jackpotFee, setJackpotFee] = useState('20')
+  const [jackpotSaving, setJackpotSaving] = useState(false)
+  const [eventPhase, setEventPhase] = useState<'setup' | 'open' | 'live'>('setup')
+  const [lifecycleBusy, setLifecycleBusy] = useState(false)
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setDataLoading(true)
     const supabase = getSupabaseBrowser()
@@ -968,6 +975,9 @@ export default function AdminPage() {
       if (!silent) setPartyCostInput(target > 0 ? String(target) : '')
       if (settings.event_title) { setEventTitle(settings.event_title); if (!silent) setEventTitleInput(settings.event_title) }
       if (settings.poster_url) setPosterUrl(settings.poster_url)
+      setJackpotEnabled(Boolean(settings.jackpot_enabled))
+      if (!silent) setJackpotFee(String(settings.jackpot_fee ?? '20'))
+      setEventPhase((settings.event_phase as 'setup' | 'open' | 'live') ?? 'setup')
     }
     if (!silent) setDataLoading(false)
   }, [])
@@ -1093,21 +1103,64 @@ export default function AdminPage() {
     await loadData()
   }
 
-  async function lockAllFights() {
-    if (!confirm("Lock all fights? No new pick'em entries will be accepted.")) return
-    setFights((prev) => prev.map((f) => f.status === 'upcoming' ? { ...f, status: 'locked' as const } : f))
-    await fetch('/api/lock-all-fights', { method: 'POST' })
+  // ── jackpot global settings ───────────────────────────────────────────────
+  async function saveJackpotSettings(enabled: boolean, fee: string) {
+    setJackpotSaving(true)
+    setJackpotEnabled(enabled)
+    setJackpotFee(fee)
+    await fetch('/api/event-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jackpot_enabled: enabled, jackpot_fee: fee }),
+    })
+    setJackpotSaving(false)
   }
 
-  // ── per-fight lock (with confirmation) ────────────────────────────────────
-  async function lockPicksConfirmed() {
-    const fight = lockConfirmFight
-    if (!fight) return
-    setLockingFight(true)
+  // ── event lifecycle ───────────────────────────────────────────────────────
+  async function saveEventPhase(phase: 'setup' | 'open' | 'live') {
+    setEventPhase(phase)
+    await fetch('/api/event-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_phase: phase }) })
+  }
+  async function setFightJackpot(fightId: string, open: boolean) {
+    setFights((prev) => prev.map((f) => f.id === fightId ? { ...f, stoppage_bet_open: open, stoppage_bet_fee: open ? jackpotFee : f.stoppage_bet_fee } : f))
+    await fetch('/api/update-fight-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fight_id: fightId, stoppage_bet_open: open, ...(open ? { stoppage_bet_fee: jackpotFee } : {}) }),
+    })
+  }
+  const orderedFights = [...fights].sort((a, b) => a.fight_number - b.fight_number)
+  const firstIncompleteFight = orderedFights.find((f) => f.status !== 'complete')
+
+  // Setup → Open: lock the card, open pick'em, open fight 1 jackpot if enabled
+  async function confirmFightsOpenBets() {
+    setLifecycleBusy(true)
+    await saveEventPhase('open')
+    if (jackpotEnabled && orderedFights[0]) await setFightJackpot(orderedFights[0].id, true)
+    await loadData(true)
+    setLifecycleBusy(false)
+  }
+
+  // Open → Live: close pick'em + fight 1 jackpot, mark fight 1 in progress
+  async function beginFirstFight() {
+    setLifecycleBusy(true)
+    const first = orderedFights[0]
+    if (first) {
+      if (first.stoppage_bet_open) await setFightJackpot(first.id, false)
+      setFights((prev) => prev.map((f) => f.id === first.id ? { ...f, status: 'locked' as const } : f))
+      await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: first.id, status: 'locked' }) })
+    }
+    await saveEventPhase('live')
+    await loadData(true)
+    setLifecycleBusy(false)
+  }
+
+  // Live: close a fight's open jackpot and mark it in progress
+  async function beginFight(fight: Fight) {
+    setLifecycleBusy(true)
+    if (fight.stoppage_bet_open) await setFightJackpot(fight.id, false)
     setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: 'locked' as const } : f))
     await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: fight.id, status: 'locked' }) })
-    setLockingFight(false)
-    setLockConfirmFight(null)
+    await loadData(true)
+    setLifecycleBusy(false)
   }
 
   // ── enter-results bottom sheet ────────────────────────────────────────────
@@ -1135,6 +1188,7 @@ export default function AdminPage() {
     })
 
     // Resolve stoppage jackpot if not a decision
+    let jackpotHadWinner = false
     if (form.method !== 'Decision') {
       const a = stopActual[fight.id]
       const round = parseInt(a?.round || '0', 10)
@@ -1147,6 +1201,7 @@ export default function AdminPage() {
         })
         const result = await res.json()
         if (result.winner) {
+          jackpotHadWinner = true
           const playerName = players.find((p) => p.id === result.winner.player_id)?.name ?? 'Unknown'
           const m = result.winner.minute_pick - 1
           const s = String(result.winner.second_pick).padStart(2, '0')
@@ -1159,9 +1214,25 @@ export default function AdminPage() {
       setStoppageWinners((prev) => ({ ...prev, [fight.id]: 'No winner — Decision' }))
     }
 
-    // Mark the fight complete (results sheet is opened from a locked fight)
+    // Mark the fight complete
     await fetch('/api/update-fight-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: fight.id, status: 'complete' }) })
     setFights((prev) => prev.map((f) => f.id === fight.id ? { ...f, status: 'complete' as const, result_winner: form.winner, result_method: form.method as Fight['result_method'], result_round: form.method !== 'Decision' && form.round ? parseInt(form.round, 10) : null } : f))
+
+    // Advance the jackpot: open the next fight's window, carrying any rollover when nobody won
+    if (jackpotEnabled) {
+      const ordered = [...fights].sort((a, b) => a.fight_number - b.fight_number)
+      const nextFight = ordered.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
+      if (nextFight) {
+        const hadBets = stoppageBets.some((b) => b.fight_id === fight.id && b.activated)
+        if (!jackpotHadWinner && (hadBets || (fight.jackpot_rollover ?? 0) > 0)) {
+          await fetch('/api/jackpot-rollover', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_fight_id: fight.id, to_fight_id: nextFight.id }),
+          })
+        }
+        await setFightJackpot(nextFight.id, true)
+      }
+    }
 
     await loadData(true)
     setSheetSaveState('done')
@@ -1179,22 +1250,6 @@ export default function AdminPage() {
   }
 
   // ── stoppage jackpot ─────────────────────────────────────────────────────
-
-  async function toggleStoppageBetting(fightId: string, open: boolean) {
-    setFights((prev) => prev.map((f) => f.id === fightId ? { ...f, stoppage_bet_open: open } : f))
-    await fetch('/api/update-fight-settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fight_id: fightId, stoppage_bet_open: open }),
-    })
-  }
-
-  async function saveFightBetFee(fightId: string, fee: string) {
-    setFights((prev) => prev.map((f) => f.id === fightId ? { ...f, stoppage_bet_fee: fee } : f))
-    await fetch('/api/update-fight-settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fight_id: fightId, stoppage_bet_fee: fee }),
-    })
-  }
 
   async function activateStoppageBet(betId: string, value: boolean) {
     setStoppageBets((prev) => prev.map((b) => b.id === betId ? { ...b, paid: value, activated: value } : b))
@@ -1264,14 +1319,6 @@ export default function AdminPage() {
     setSavingResults((prev) => ({ ...prev, [fight.id]: false }))
     setExpandedResults((prev) => { const s = new Set(prev); s.delete(fight.id); return s })
     await loadData(true)
-  }
-
-  async function rolloverJackpot(fromFightId: string, toFightId: string) {
-    const res = await fetch('/api/jackpot-rollover', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from_fight_id: fromFightId, to_fight_id: toFightId }),
-    })
-    if (res.ok) await loadData()
   }
 
   // ── results ───────────────────────────────────────────────────────────────
@@ -1422,10 +1469,9 @@ export default function AdminPage() {
     ? competitions.reduce((s, c) => s + (c.expense_cut_pct ?? 50), 0) / competitions.length / 100
     : 0.5
   const jackpotExpenseContrib = fights
-    .filter((f) => f.stoppage_bet_open)
     .reduce((sum, fight) => {
       const activated = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated).length
-      const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
+      const fee = parseFloat(fight.stoppage_bet_fee ?? jackpotFee) || 20
       return sum + activated * fee * avgJackpotExpCutPct
     }, 0)
   const expenseRecovery = calcExpenseRecovery(competitions, players, partyCostTarget, jackpotExpenseContrib)
@@ -1448,19 +1494,21 @@ export default function AdminPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       {showQR && <QRModal onClose={() => setShowQR(false)} />}
 
-      {/* Lock Picks confirmation */}
-      {lockConfirmFight && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !lockingFight && setLockConfirmFight(null)}>
+      {/* Lifecycle action confirmation */}
+      {lifecycleConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !lifecycleBusy && setLifecycleConfirm(null)}>
           <div className="w-full sm:max-w-md bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-black text-white text-center">Lock picks?</h3>
-            <p className="text-gray-300 text-sm text-center mt-2">
-              Lock picks for <span className="text-white font-bold">{lockConfirmFight.fighter_a}</span> vs <span className="text-white font-bold">{lockConfirmFight.fighter_b}</span>? Players won&apos;t be able to change their picks.
-            </p>
+            <h3 className="text-xl font-black text-white text-center">{lifecycleConfirm.title}</h3>
+            <p className="text-gray-300 text-sm text-center mt-2">{lifecycleConfirm.message}</p>
             <div className="mt-6 space-y-2.5">
-              <button onClick={lockPicksConfirmed} disabled={lockingFight} className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 text-black font-black text-lg py-4 rounded-2xl transition-colors">
-                {lockingFight ? 'Locking…' : '🔒 Lock Picks'}
+              <button
+                onClick={async () => { const fn = lifecycleConfirm.onConfirm; setLifecycleConfirm(null); await fn() }}
+                disabled={lifecycleBusy}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-black text-lg py-4 rounded-2xl transition-colors"
+              >
+                {lifecycleConfirm.confirmLabel}
               </button>
-              <button onClick={() => setLockConfirmFight(null)} disabled={lockingFight} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-2xl transition-colors">
+              <button onClick={() => setLifecycleConfirm(null)} disabled={lifecycleBusy} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-2xl transition-colors">
                 Cancel
               </button>
             </div>
@@ -1628,6 +1676,8 @@ export default function AdminPage() {
           competitions={competitions}
           fights={fights}
           partyCostTarget={partyCostTarget}
+          jackpotEnabled={jackpotEnabled}
+          globalJackpotFee={jackpotFee}
           onExit={() => setSimMode(false)}
         />
       )}
@@ -1714,6 +1764,37 @@ export default function AdminPage() {
                 <span className="text-green-500 text-xs font-semibold">✓ Poster active</span>
               )}
               {posterError && <p className="text-red-400 text-xs mt-2">{posterError}</p>}
+            </div>
+          </div>
+
+          {/* Stoppage Jackpot Game */}
+          <div className="border-t border-gray-800 pt-5">
+            <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1">Stoppage Jackpot Game</label>
+            <p className="text-xs text-gray-400 mb-3">Optional side game for the night. When on, players guess each fight&apos;s exact stoppage time; closest without going over wins the pot.</p>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                onClick={() => saveJackpotSettings(!jackpotEnabled, jackpotFee)}
+                disabled={jackpotSaving}
+                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${jackpotEnabled ? 'bg-green-600' : 'bg-gray-700'}`}
+                aria-pressed={jackpotEnabled}
+              >
+                <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${jackpotEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+              </button>
+              <span className={`text-sm font-bold ${jackpotEnabled ? 'text-green-400' : 'text-gray-400'}`}>
+                {jackpotEnabled ? 'Jackpot ON for the night' : 'Jackpot OFF'}
+              </span>
+              {jackpotEnabled && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-400">Entry cost $</span>
+                  <input
+                    type="number" min={1} value={jackpotFee}
+                    onChange={(e) => setJackpotFee(e.target.value)}
+                    onBlur={(e) => saveJackpotSettings(true, e.target.value || '20')}
+                    className="w-20 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-green-600"
+                  />
+                  {jackpotSaving && <span className="text-xs text-gray-500">saving…</span>}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1902,29 +1983,85 @@ export default function AdminPage() {
           )
         })()}
 
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <SectionHeader>Fights</SectionHeader>
-          <div className="flex flex-wrap gap-2">
-            {fights.some((f) => f.status === 'upcoming') && (
-              <button
-                onClick={lockAllFights}
-                className="bg-yellow-600 hover:bg-yellow-500 text-black font-black px-4 py-2 rounded-lg text-sm transition-colors"
-              >
-                🔒 Lock All
-              </button>
+        {/* Event lifecycle control bar */}
+        {fights.length > 0 && (
+          <div className={`rounded-xl p-4 mb-5 border ${
+            eventPhase === 'setup' ? 'bg-gray-900 border-gray-700'
+            : eventPhase === 'open' ? 'bg-green-950/40 border-green-700'
+            : 'bg-red-950/40 border-red-800'
+          }`}>
+            {eventPhase === 'setup' && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-white font-bold">🛠 Card in setup</p>
+                  <p className="text-gray-400 text-xs mt-0.5">Players can&apos;t enter yet. Confirm the card to lock odds and open pick&apos;em{jackpotEnabled ? ' + the first jackpot' : ''}.</p>
+                </div>
+                <button
+                  onClick={() => setLifecycleConfirm({
+                    title: 'Confirm fights & open bets?',
+                    message: `This locks all fight details (odds, rounds) and opens pick'em entries for players.${jackpotEnabled ? " Fight 1's jackpot betting opens too." : ''}`,
+                    confirmLabel: lifecycleBusy ? 'Working…' : '✓ Confirm & Open',
+                    onConfirm: confirmFightsOpenBets,
+                  })}
+                  disabled={lifecycleBusy}
+                  className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-black px-5 py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  ✓ Confirm Fights &amp; Open Bets
+                </button>
+              </div>
             )}
-            <button
-              onClick={() => { setShowImport((v) => !v); setImportError(''); setImportEvents([]); setImportSuccess('') }}
-              className="bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-            >
-              Import
-            </button>
-            {!showAddFight && (
-              <button onClick={() => { setShowAddFight(true); setEditingFightId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
-                + Add Fight
-              </button>
+            {eventPhase === 'open' && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-green-300 font-black">🟢 Pick&apos;em is OPEN</p>
+                  <p className="text-gray-300 text-xs mt-0.5">Players are entering{jackpotEnabled ? ' · Fight 1 jackpot betting is live' : ''}. Begin the first fight to lock everything in.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLifecycleConfirm({
+                      title: 'Begin the first fight?',
+                      message: `This closes pick'em for the night — no new entries or changes.${jackpotEnabled ? " Fight 1's jackpot betting closes." : ''}`,
+                      confirmLabel: lifecycleBusy ? 'Working…' : '▶ Begin First Fight',
+                      onConfirm: beginFirstFight,
+                    })}
+                    disabled={lifecycleBusy}
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-black px-5 py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    ▶ Begin First Fight
+                  </button>
+                  <button
+                    onClick={async () => { setLifecycleBusy(true); if (orderedFights[0]?.stoppage_bet_open) await setFightJackpot(orderedFights[0].id, false); await saveEventPhase('setup'); await loadData(true); setLifecycleBusy(false) }}
+                    disabled={lifecycleBusy}
+                    className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-2.5 rounded-xl text-xs transition-colors"
+                  >
+                    ← Setup
+                  </button>
+                </div>
+              </div>
+            )}
+            {eventPhase === 'live' && (
+              <p className="text-red-300 font-black">🔴 Event LIVE — pick&apos;em is closed. Run each fight below.</p>
             )}
           </div>
+        )}
+
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <SectionHeader>Fights</SectionHeader>
+          {eventPhase === 'setup' && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setShowImport((v) => !v); setImportError(''); setImportEvents([]); setImportSuccess('') }}
+                className="bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
+              >
+                Import
+              </button>
+              {!showAddFight && (
+                <button onClick={() => { setShowAddFight(true); setEditingFightId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+                  + Add Fight
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Import panel */}
@@ -2072,42 +2209,42 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {fight.status === 'upcoming' && (
+                    {/* Setup: edit/delete the card */}
+                    {eventPhase === 'setup' && (
                       <>
                         <button onClick={() => { setEditingFightId(fight.id); setShowAddFight(false) }} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Edit</button>
                         <button onClick={() => deleteFight(fight.id)} className="bg-gray-800 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">Delete</button>
-                        <button onClick={() => setLockConfirmFight(fight)} className="bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-1.5 rounded-lg text-sm font-black transition-colors">
-                          🔒 Lock Picks
-                        </button>
                       </>
                     )}
-                    {fight.status === 'locked' && (
-                      <button onClick={() => openResultsSheet(fight)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-lg text-sm font-black transition-colors">
-                        Enter Results →
-                      </button>
+                    {/* Live: contextual action for the current fight */}
+                    {eventPhase === 'live' && fight.status !== 'complete' && firstIncompleteFight?.id === fight.id && (
+                      jackpotEnabled && fight.stoppage_bet_open ? (
+                        <button
+                          onClick={() => setLifecycleConfirm({
+                            title: `Begin Fight ${fight.fight_number}?`,
+                            message: `This closes jackpot betting for ${fight.fighter_a} vs ${fight.fighter_b}.`,
+                            confirmLabel: lifecycleBusy ? 'Working…' : `▶ Begin Fight ${fight.fight_number}`,
+                            onConfirm: () => beginFight(fight),
+                          })}
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-sm font-black transition-colors"
+                        >
+                          ▶ Begin Fight {fight.fight_number}
+                        </button>
+                      ) : (
+                        <button onClick={() => openResultsSheet(fight)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-lg text-sm font-black transition-colors">
+                          Enter Results →
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
 
-                {/* Jackpot controls — upcoming + locked */}
-                {fight.status !== 'complete' && (
-                  <div className="px-5 py-3 border-t border-gray-800/60 bg-gray-800/20 flex flex-wrap items-center gap-3">
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Jackpot</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-400">$</span>
-                      <input
-                        type="text"
-                        defaultValue={fight.stoppage_bet_fee ?? '20'}
-                        onBlur={(e) => saveFightBetFee(fight.id, e.target.value)}
-                        className="w-14 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-yellow-600"
-                      />
-                    </div>
-                    <button
-                      onClick={() => toggleStoppageBetting(fight.id, !fight.stoppage_bet_open)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${fight.stoppage_bet_open ? 'bg-green-800 hover:bg-red-900 text-green-200' : 'bg-gray-800 hover:bg-green-900 text-gray-400 hover:text-green-300'}`}
-                    >
-                      {fight.stoppage_bet_open ? '● OPEN — tap to close' : '○ Open Betting'}
-                    </button>
+                {/* Jackpot status line (when a jackpot window is open for this fight) */}
+                {jackpotEnabled && fight.stoppage_bet_open && fight.status !== 'complete' && (
+                  <div className="px-5 py-2.5 border-t border-yellow-900/40 bg-yellow-950/20 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-black text-yellow-400 uppercase tracking-wider">🎰 Jackpot betting OPEN</span>
+                    <span className="text-xs text-gray-400">${fight.stoppage_bet_fee ?? jackpotFee} entry</span>
+                    {(fight.jackpot_rollover ?? 0) > 0 && <span className="text-xs text-orange-400 font-bold">🔥 ${fight.jackpot_rollover} rollover</span>}
                     {fightBetCount > 0 && <span className="text-xs text-gray-300">{fightBetCount} bet{fightBetCount !== 1 ? 's' : ''}</span>}
                   </div>
                 )}
@@ -2132,18 +2269,9 @@ export default function AdminPage() {
                               Stoppage: R{fight.stoppage_actual_round} {fight.stoppage_actual_minute}:{String(fight.stoppage_actual_second ?? 0).padStart(2, '0')}
                             </p>
                           ) : null}
-                          {stoppageWinners[fight.id]?.startsWith('No winner') && (() => {
-                            const nextFight = fights.find((f) => f.fight_number > fight.fight_number && f.status !== 'complete')
-                            if (!nextFight) return null
-                            const activatedBets = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated)
-                            const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
-                            const rolloverAmt = activatedBets.length * fee + (fight.jackpot_rollover ?? 0)
-                            return (
-                              <button onClick={() => rolloverJackpot(fight.id, nextFight.id)} className="mt-2 bg-orange-700 hover:bg-orange-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">
-                                Roll ${rolloverAmt} → Fight {nextFight.fight_number}
-                              </button>
-                            )
-                          })()}
+                          {stoppageWinners[fight.id]?.startsWith('No winner') && jackpotEnabled && (
+                            <p className="text-xs text-orange-400 mt-1 font-semibold">🔥 Pot rolled over to the next fight</p>
+                          )}
                         </div>
                         <button
                           onClick={() => {
@@ -2613,10 +2741,10 @@ export default function AdminPage() {
 
         // End-of-night summary numbers
         const pickEmRevenue = expenseRecovery.poolData.reduce((s, d) => s + d.totalPaid, 0)
-        const jackpotRevenue = fights.filter(f => f.stoppage_bet_open).reduce((sum, fight) => {
+        const jackpotRevenue = fights.reduce((sum, fight) => {
           const activated = stoppageBets.filter(b => b.fight_id === fight.id && b.activated).length
-          const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
-          return sum + activated * fee + (fight.jackpot_rollover ?? 0)
+          const fee = parseFloat(fight.stoppage_bet_fee ?? jackpotFee) || 20
+          return sum + activated * fee
         }, 0)
         const totalRevenue = pickEmRevenue + jackpotRevenue
         const expenseCut = expenseRecovery.expenseCovered

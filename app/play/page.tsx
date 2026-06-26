@@ -98,6 +98,9 @@ export default function PlayPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
+  const [eventPhase, setEventPhase] = useState<'setup' | 'open' | 'live'>('setup')
+  const [jackpotEnabled, setJackpotEnabled] = useState(false)
+  const [jackpotFee, setJackpotFee] = useState('20')
 
   // Multi-entry state
   const [storedEntries, setStoredEntries] = useState<StoredEntry[]>([])
@@ -174,6 +177,9 @@ export default function PlayPage() {
     if (settingsRes.ok) {
       const settings = await settingsRes.json()
       if (settings.event_title) setEventTitle(settings.event_title)
+      setEventPhase((settings.event_phase as 'setup' | 'open' | 'live') ?? 'setup')
+      setJackpotEnabled(Boolean(settings.jackpot_enabled))
+      setJackpotFee(String(settings.jackpot_fee ?? '20'))
     }
 
     if (compsData) setCompetitions(compsData)
@@ -420,7 +426,7 @@ export default function PlayPage() {
         )}
 
         {/* Entry purchase cards — same big tiles as the opening screen, with purchase counts */}
-        {competitions.some((c) => (c.max_entries ?? 1) > 1) && (
+        {eventPhase === 'open' && competitions.some((c) => (c.max_entries ?? 1) > 1) && (
           <div className="mb-6">
             <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">Entries</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -508,7 +514,7 @@ export default function PlayPage() {
 
             {/* ── Stoppage Time Jackpot ────────────────────────────────── */}
             {(() => {
-              const jackpotFights = fights.filter((f) => f.stoppage_bet_open && f.status !== 'complete')
+              const jackpotFights = jackpotEnabled ? fights.filter((f) => f.stoppage_bet_open && f.status !== 'complete') : []
               if (jackpotFights.length === 0) return null
               return (
                 <div className="mb-6">
@@ -525,7 +531,7 @@ export default function PlayPage() {
                       const fightBets = stoppageBets.filter((b) => b.fight_id === fight.id)
                       const myBet = fightBets.find((b) => b.player_id === viewingPlayer.id)
                       const draft = stoppageDrafts[fight.id] ?? { step: 'round' as const, round: null, minute: null, second: 0, error: '', placing: false }
-                      const fee = fight.stoppage_bet_fee ?? '20'
+                      const fee = fight.stoppage_bet_fee ?? jackpotFee
                       const feeNum = parseFloat(fee) || 20
                       const activatedCount = fightBets.filter((b) => b.activated).length
                       const rollover = fight.jackpot_rollover ?? 0
@@ -535,7 +541,16 @@ export default function PlayPage() {
                         fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
 
                       return (
-                        <div key={fight.id} className="bg-gray-900/70 backdrop-blur-sm rounded-xl p-5 border border-yellow-900/40">
+                        <div key={fight.id} className={`bg-gray-900/70 backdrop-blur-sm rounded-xl p-5 border ${rollover > 0 ? 'border-orange-500/70 shadow-[0_0_25px_-5px_rgba(249,115,22,0.5)]' : 'border-yellow-900/40'}`}>
+                          {/* Rollover excitement banner */}
+                          {rollover > 0 && (
+                            <div className="-mx-5 -mt-5 mb-4 px-5 py-3 bg-gradient-to-r from-orange-600 via-red-600 to-orange-600 rounded-t-xl text-center animate-pulse">
+                              <p className="text-white font-black text-lg tracking-tight drop-shadow">
+                                🔥 ${rollover} ROLLOVER JACKPOT! 🔥
+                              </p>
+                              <p className="text-orange-100 text-xs font-semibold">Nobody won last fight — it&apos;s all up for grabs now!</p>
+                            </div>
+                          )}
                           <div className="flex justify-between items-start mb-4">
                             <div>
                               <p className="text-xs text-yellow-500 font-bold uppercase tracking-wider mb-0.5">
@@ -544,11 +559,6 @@ export default function PlayPage() {
                               <p className="text-white font-bold">
                                 {fight.fighter_a} vs {fight.fighter_b}
                               </p>
-                              {rollover > 0 && (
-                                <p className="text-xs text-orange-400 mt-1 font-semibold">
-                                  🔥 Includes ${rollover} rollover from previous fight
-                                </p>
-                              )}
                             </div>
                             <div className="text-right">
                               {potTotal > 0 ? (
@@ -724,6 +734,32 @@ export default function PlayPage() {
 
           </>
         )}
+      </div>
+    )
+  }
+
+  // Brand-new players can only enter while pick'em is open
+  if (storedEntries.length === 0 && eventPhase !== 'open') {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <PlayerTabs />
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
+          <h2 className="text-2xl font-bold text-white mt-1">PICK'EM</h2>
+        </div>
+        <div className="bg-gray-900/70 backdrop-blur-sm rounded-2xl p-10 text-center">
+          {eventPhase === 'setup' ? (
+            <>
+              <p className="text-white font-bold text-lg">Picks aren&apos;t open yet</p>
+              <p className="text-gray-300 text-sm mt-2">Hang tight — the organizer will open entries soon. Check back in a bit!</p>
+            </>
+          ) : (
+            <>
+              <p className="text-white font-bold text-lg">Picks are closed</p>
+              <p className="text-gray-300 text-sm mt-2">The event has started. Follow the action on the <Link href="/leaderboard" className="text-red-400 font-semibold underline">leaderboard</Link>.</p>
+            </>
+          )}
+        </div>
       </div>
     )
   }
