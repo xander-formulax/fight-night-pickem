@@ -901,6 +901,7 @@ export default function PlayPage() {
 
                 {/* winner cards (stacked) */}
                 <div className="space-y-3">
+                  <p className="text-sm font-bold text-gray-300 text-center uppercase tracking-wide">Who will win?</p>
                   {[
                     { fighter: fight.fighter_a, odds: fight.odds_a },
                     { fighter: fight.fighter_b, odds: fight.odds_b },
@@ -928,7 +929,9 @@ export default function PlayPage() {
 
                 {/* method (after winner) */}
                 {winnerChosen && (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <p className="text-sm font-bold text-gray-300 text-center uppercase tracking-wide">Winning method?</p>
+                    <div className="grid grid-cols-3 gap-3">
                     {METHOD_META.map(({ value, label, icon }) => {
                       const sel = pick?.method_pick === value
                       return (
@@ -945,12 +948,15 @@ export default function PlayPage() {
                         </button>
                       )
                     })}
+                    </div>
                   </div>
                 )}
 
                 {/* round (after KO/Sub) */}
                 {showRound && (
-                  <div className="flex gap-3 flex-wrap justify-center">
+                  <div className="space-y-2">
+                    <p className="text-sm font-bold text-gray-300 text-center uppercase tracking-wide">In which round?</p>
+                    <div className="flex gap-3 flex-wrap justify-center">
                     {Array.from({ length: fight.rounds }, (_, i) => i + 1).map((r) => {
                       const sel = pick?.round_pick === String(r)
                       return (
@@ -966,6 +972,7 @@ export default function PlayPage() {
                         </button>
                       )
                     })}
+                    </div>
                   </div>
                 )}
 
