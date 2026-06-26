@@ -7,11 +7,27 @@ import { formatOdds } from '@/lib/scoring'
 import type { Competition, Fight, Pick, Player, PrizeSplit, Score, StoppageBet } from '@/lib/types'
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
+const DEFAULT_QR_URL = 'https://fight-night-pickem.vercel.app/play'
+
 function QRModal({ onClose }: { onClose: () => void }) {
-  const defaultUrl = typeof window !== 'undefined' ? `${window.location.origin}/play` : '/play'
   const [customUrl, setCustomUrl] = useState('')
   const [copied, setCopied] = useState(false)
-  const url = customUrl.trim() || defaultUrl
+
+  // Load any saved override on open
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('fn_qr_override') : null
+    if (saved) setCustomUrl(saved)
+  }, [])
+
+  function updateCustomUrl(value: string) {
+    setCustomUrl(value)
+    if (typeof window !== 'undefined') {
+      if (value.trim()) localStorage.setItem('fn_qr_override', value.trim())
+      else localStorage.removeItem('fn_qr_override')
+    }
+  }
+
+  const url = customUrl.trim() || DEFAULT_QR_URL
 
   function copyUrl() {
     navigator.clipboard.writeText(url).then(() => {
@@ -51,10 +67,15 @@ function QRModal({ onClose }: { onClose: () => void }) {
           <input
             type="text"
             value={customUrl}
-            onChange={(e) => setCustomUrl(e.target.value)}
-            placeholder={defaultUrl}
+            onChange={(e) => updateCustomUrl(e.target.value)}
+            placeholder={DEFAULT_QR_URL}
             className="w-full text-xs text-gray-700 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 placeholder-gray-300"
           />
+          {customUrl.trim() && (
+            <button onClick={() => updateCustomUrl('')} className="text-gray-400 hover:text-gray-600 text-xs mt-1">
+              Reset to default
+            </button>
+          )}
         </div>
       </div>
     </div>
