@@ -2061,14 +2061,28 @@ export default function AdminPage() {
               </div>
             )}
             {eventPhase === 'live' && (
-              <p className="text-red-300 font-black">🔴 Event LIVE — pick&apos;em is closed. Run each fight below.</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-red-300 font-black">🔴 Event LIVE — pick&apos;em is closed. Run each fight below.</p>
+                <button
+                  onClick={() => setLifecycleConfirm({
+                    title: 'Reopen setup?',
+                    message: 'This sends the event back to setup so you can edit or add fights. Pick’em will reopen only after you confirm the card again.',
+                    confirmLabel: lifecycleBusy ? 'Working…' : '↩ Reopen Setup',
+                    onConfirm: async () => { setLifecycleBusy(true); await saveEventPhase('setup'); await loadData(true); setLifecycleBusy(false) },
+                  })}
+                  disabled={lifecycleBusy}
+                  className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-2 rounded-xl text-xs transition-colors shrink-0"
+                >
+                  ↩ Reopen Setup
+                </button>
+              </div>
             )}
           </div>
         )}
 
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <SectionHeader>Fights</SectionHeader>
-          {eventPhase === 'setup' && (
+          {(eventPhase === 'setup' || fights.length === 0) && (
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => { setShowImport((v) => !v); setImportError(''); setImportEvents([]); setImportSuccess('') }}
