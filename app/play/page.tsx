@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
+import { PoweredByFormulaX } from '@/app/components/PoweredByFormulaX'
 import type { Competition, Fight, Player, Pick, StoppageBet } from '@/lib/types'
 
 function PlayerTabs() {
@@ -92,6 +93,101 @@ function saveStoredEntries(entries: StoredEntry[]) {
   localStorage.setItem('fight_night_entries', JSON.stringify(entries))
 }
 
+// ── Stoppage jackpot timing helpers ────────────────────────────────────────
+// minute_pick is 1-indexed (1 = 0:00–0:59); stoppage_actual_minute is clock display (0–4)
+function pickToSeconds(round: number, minutePick: number, second: number) {
+  return (round - 1) * 300 + (minutePick - 1) * 60 + second
+}
+function fightActualSeconds(f: Fight): number | null {
+  if (f.stoppage_actual_round == null || f.stoppage_actual_minute == null || f.stoppage_actual_second == null) return null
+  return (f.stoppage_actual_round - 1) * 300 + f.stoppage_actual_minute * 60 + f.stoppage_actual_second
+}
+
+// ── Jackpot popups ─────────────────────────────────────────────────────────
+function JackpotPromoModal({
+  fight, potTotal, rollover, fee, onEnter, onClose,
+}: {
+  fight: Fight
+  potTotal: number
+  rollover: number
+  fee: string
+  onEnter: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative w-full max-w-sm rounded-3xl overflow-hidden border-2 border-yellow-500/60 shadow-[0_0_60px_-10px_rgba(234,179,8,0.6)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={`px-6 pt-7 pb-6 text-center ${rollover > 0 ? 'bg-gradient-to-br from-orange-600 via-red-600 to-orange-700 animate-pulse' : 'bg-gradient-to-br from-yellow-500 via-amber-500 to-yellow-600'}`}>
+          <div className="text-5xl mb-1">🎰</div>
+          {rollover > 0 ? (
+            <>
+              <p className="text-white font-black text-2xl tracking-tight drop-shadow">🔥 ${rollover} ROLLOVER 🔥</p>
+              <p className="text-orange-50 text-sm font-semibold mt-1">Nobody won last fight — the pot carried over and it&apos;s STACKED.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-white font-black text-2xl tracking-tight drop-shadow">STOPPAGE JACKPOT IS OPEN</p>
+              <p className="text-yellow-50 text-sm font-semibold mt-1">Winner takes the whole pot.</p>
+            </>
+          )}
+        </div>
+        <div className="bg-gray-900 px-6 py-6 text-center">
+          <p className="text-gray-300 text-sm">Fight {fight.fight_number} — {fight.fighter_a} vs {fight.fighter_b}</p>
+          <div className="my-4">
+            <p className="text-yellow-400 font-black text-5xl tabular-nums">${potTotal > 0 ? potTotal : fee}</p>
+            <p className="text-gray-400 text-xs uppercase tracking-widest mt-1">{potTotal > 0 ? 'on the line right now' : 'entry fee'}</p>
+          </div>
+          <p className="text-gray-300 text-sm mb-5">
+            Guess the <span className="text-white font-bold">exact second</span> the fight gets stopped. Closest without going over wins it all — just <span className="text-white font-bold">${fee}</span> to get in.
+          </p>
+          <button onClick={onEnter} className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black text-lg py-4 rounded-2xl transition-colors">
+            I&apos;m In — Place My Pick →
+          </button>
+          <button onClick={onClose} className="w-full text-gray-400 hover:text-gray-200 text-sm font-semibold py-3 mt-1">
+            Maybe later
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function JackpotWinModal({
+  amount, fightLabel, pick, onClose,
+}: {
+  amount: number
+  fightLabel: string
+  pick: string
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative w-full max-w-sm rounded-3xl overflow-hidden border-2 border-green-400/70 shadow-[0_0_70px_-5px_rgba(34,197,94,0.7)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-green-600 px-6 pt-8 pb-7 text-center">
+          <div className="text-6xl mb-2">🎉</div>
+          <p className="text-white font-black text-3xl tracking-tight drop-shadow">YOU WON THE JACKPOT!</p>
+          <p className="text-green-50 text-sm font-semibold mt-1">{fightLabel}</p>
+        </div>
+        <div className="bg-gray-900 px-6 py-7 text-center">
+          <p className="text-gray-400 text-xs uppercase tracking-widest">your winnings</p>
+          <p className="text-green-400 font-black text-6xl tabular-nums my-2">${amount}</p>
+          <p className="text-gray-300 text-sm">Your pick — <span className="text-white font-bold">{pick}</span> — was closest without going over. 🥇</p>
+          <p className="text-gray-400 text-xs mt-3">See the organizer to collect your payout.</p>
+          <button onClick={onClose} className="w-full bg-green-500 hover:bg-green-400 text-black font-black text-lg py-4 rounded-2xl transition-colors mt-5">
+            Let&apos;s Go! 🎊
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PlayPage() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [fights, setFights] = useState<Fight[]>([])
@@ -118,8 +214,13 @@ export default function PlayPage() {
   // Wizard flow state
   const [flowStep, setFlowStep] = useState<'setup' | number | 'review'>('setup')
   const [showConfirmSheet, setShowConfirmSheet] = useState(false)
+  const [missing, setMissing] = useState<{ name: boolean; pool: boolean }>({ name: false, pool: false })
 
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
+
+  // Jackpot engagement popups
+  const [jackpotPromo, setJackpotPromo] = useState<{ fightId: string } | null>(null)
+  const [jackpotWin, setJackpotWin] = useState<{ fightId: string; amount: number; fightLabel: string; pick: string } | null>(null)
 
   interface StoppageDraft {
     step: 'round' | 'minute' | 'second'
@@ -202,11 +303,13 @@ export default function PlayPage() {
       await loadEntryData(activeEntry)
     }
 
-    // Load stoppage bets for open fights
-    const openFightIds = (fightsData ?? []).filter((f) => f.stoppage_bet_open).map((f) => f.id)
-    if (openFightIds.length > 0) {
+    // Load stoppage bets for open fights + resolved completed fights (for win detection)
+    const betFightIds = (fightsData ?? [])
+      .filter((f) => f.stoppage_bet_open || (f.status === 'complete' && f.stoppage_actual_round != null))
+      .map((f) => f.id)
+    if (betFightIds.length > 0) {
       const { data: betsData } = await supabase
-        .from('stoppage_bets').select('*').in('fight_id', openFightIds)
+        .from('stoppage_bets').select('*').in('fight_id', betFightIds)
       if (betsData) setStoppageBets(betsData)
     }
 
@@ -248,6 +351,48 @@ export default function PlayPage() {
     document.addEventListener('visibilitychange', onVisible)
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [loadData])
+
+  // Jackpot engagement popups: a win (congrats) takes priority over an open-jackpot promo
+  useEffect(() => {
+    if (loading || !viewingPlayer || !jackpotEnabled) return
+    const pid = viewingPlayer.id
+    const seen = (key: string) => typeof window !== 'undefined' && !!localStorage.getItem(key)
+
+    // 1) Unseen jackpot WIN — show a celebratory banner
+    if (!jackpotWin) {
+      for (const f of fights) {
+        if (f.status !== 'complete') continue
+        const actual = fightActualSeconds(f)
+        if (actual == null) continue
+        const activated = stoppageBets.filter((b) => b.fight_id === f.id && b.activated)
+        if (activated.length === 0) continue
+        const winner = activated
+          .filter((b) => pickToSeconds(b.round_pick, b.minute_pick, b.second_pick) <= actual)
+          .sort((a, b) => pickToSeconds(b.round_pick, b.minute_pick, b.second_pick) - pickToSeconds(a.round_pick, a.minute_pick, a.second_pick))[0]
+        if (!winner || winner.player_id !== pid) continue
+        if (seen(`fn_jackpot_won_${f.id}_${pid}`)) continue
+        const fee = parseFloat(f.stoppage_bet_fee ?? jackpotFee) || 20
+        setJackpotWin({
+          fightId: f.id,
+          amount: activated.length * fee + (f.jackpot_rollover ?? 0),
+          fightLabel: `Fight ${f.fight_number} — ${f.fighter_a} vs ${f.fighter_b}`,
+          pick: `R${winner.round_pick} ${winner.minute_pick - 1}:${winner.second_pick.toString().padStart(2, '0')}`,
+        })
+        return
+      }
+    }
+
+    // 2) Otherwise promote an OPEN jackpot the player hasn't entered yet
+    if (!jackpotWin && !jackpotPromo) {
+      const openFight = fights.find((f) => f.stoppage_bet_open && f.status !== 'complete')
+      if (openFight) {
+        const alreadyIn = stoppageBets.some((b) => b.fight_id === openFight.id && b.player_id === pid)
+        if (!alreadyIn && !seen(`fn_jackpot_promo_${openFight.id}`)) {
+          setJackpotPromo({ fightId: openFight.id })
+        }
+      }
+    }
+  }, [loading, viewingPlayer, fights, stoppageBets, jackpotEnabled, jackpotFee, jackpotWin, jackpotPromo])
 
   function resetPicksToEmpty(fightList: Fight[]) {
     const next: Record<string, PickState> = {}
@@ -397,6 +542,36 @@ export default function PlayPage() {
 
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
+        {jackpotWin && (
+          <JackpotWinModal
+            amount={jackpotWin.amount}
+            fightLabel={jackpotWin.fightLabel}
+            pick={jackpotWin.pick}
+            onClose={() => {
+              if (viewingPlayer) localStorage.setItem(`fn_jackpot_won_${jackpotWin.fightId}_${viewingPlayer.id}`, '1')
+              setJackpotWin(null)
+            }}
+          />
+        )}
+        {jackpotPromo && !jackpotWin && (() => {
+          const f = fights.find((x) => x.id === jackpotPromo.fightId)
+          if (!f) return null
+          const fee = f.stoppage_bet_fee ?? jackpotFee
+          const feeNum = parseFloat(fee) || 20
+          const activated = stoppageBets.filter((b) => b.fight_id === f.id && b.activated).length
+          const rollover = f.jackpot_rollover ?? 0
+          const dismiss = () => { localStorage.setItem(`fn_jackpot_promo_${f.id}`, '1'); setJackpotPromo(null) }
+          return (
+            <JackpotPromoModal
+              fight={f}
+              potTotal={activated * feeNum + rollover}
+              rollover={rollover}
+              fee={fee}
+              onClose={dismiss}
+              onEnter={() => { dismiss(); setTimeout(() => document.getElementById('jackpot-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60) }}
+            />
+          )
+        })()}
         <PlayerTabs />
         <div className="text-center mb-6">
           <h1 className="text-4xl font-black text-red-500 tracking-tight">{eventTitle || 'UFC FIGHT NIGHT'}</h1>
@@ -517,7 +692,7 @@ export default function PlayPage() {
               const jackpotFights = jackpotEnabled ? fights.filter((f) => f.stoppage_bet_open && f.status !== 'complete') : []
               if (jackpotFights.length === 0) return null
               return (
-                <div className="mb-6">
+                <div id="jackpot-section" className="mb-6 scroll-mt-4">
                   <h3 className="text-lg font-bold text-white mb-1">Stoppage Time Jackpot</h3>
                   <p className="text-gray-300 text-sm mb-1">
                     Guess the exact moment the fight gets stopped — pick a round, minute, and second.
@@ -734,6 +909,7 @@ export default function PlayPage() {
 
           </>
         )}
+        <PoweredByFormulaX className="mt-10" />
       </div>
     )
   }
@@ -760,6 +936,7 @@ export default function PlayPage() {
             </>
           )}
         </div>
+        <PoweredByFormulaX className="mt-10" />
       </div>
     )
   }
@@ -775,9 +952,18 @@ export default function PlayPage() {
     setActiveEntryIdx(Math.max(0, storedEntries.length - 1))
   }
   function startPicks() {
+    const missName = !name.trim()
+    const missPool = !selectedCompetitionId
+    if (missName || missPool) {
+      setMissing({ name: missName, pool: missPool })
+      const parts: string[] = []
+      if (missName) parts.push('your name')
+      if (missPool) parts.push('a prize pool')
+      setError(`Missing ${parts.join(' and ')} — ${missName && missPool ? 'fill them in' : 'fill it in'} to continue.`)
+      return
+    }
     setError('')
-    if (!name.trim()) { setError('Please enter your name.'); return }
-    if (!selectedCompetitionId) { setError('Please choose a prize pool.'); return }
+    setMissing({ name: false, pool: false })
     setFlowStep(upcomingFights.length > 0 ? 0 : 'review')
   }
   function nextFromFight(i: number) {
@@ -815,17 +1001,25 @@ export default function PlayPage() {
           {flowStep === 'setup' && (
             <>
               <div className="bg-gray-900/70 backdrop-blur-sm rounded-2xl p-6">
-                <label className="block text-sm font-bold text-gray-200 mb-2">Your Name</label>
+                <label className={`block text-sm font-bold mb-2 ${missing.name ? 'text-red-400' : 'text-gray-200'}`}>
+                  Your Name{missing.name && <span className="font-normal"> — required</span>}
+                </label>
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setMissing((m) => ({ ...m, name: false })) }}
                   placeholder="Your full name"
-                  className="w-full bg-gray-800/70 border-2 border-gray-700/80 rounded-xl px-4 py-3.5 text-white text-lg placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors"
+                  className={`w-full bg-gray-800/70 border-2 rounded-xl px-4 py-3.5 text-white text-lg placeholder-gray-500 focus:outline-none focus:border-red-500 transition-colors ${
+                    missing.name ? 'border-red-500 bg-red-950/30' : 'border-gray-700/80'
+                  }`}
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className={`text-sm font-bold mb-2 ${missing.pool ? 'text-red-400' : 'text-gray-200'}`}>
+                  Choose Your Prize Pool{missing.pool && <span className="font-normal"> — required</span>}
+                </p>
+                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${missing.pool ? 'rounded-2xl ring-2 ring-red-500/70 p-2 -m-2' : ''}`}>
                 {competitions.map((comp) => {
                   const used = storedEntries.filter((e) => e.competition_id === comp.id).length
                   const maxEntries = comp.max_entries ?? 1
@@ -836,7 +1030,7 @@ export default function PlayPage() {
                       key={comp.id}
                       type="button"
                       disabled={isMaxed}
-                      onClick={() => setSelectedCompetitionId(comp.id)}
+                      onClick={() => { setSelectedCompetitionId(comp.id); setMissing((m) => ({ ...m, pool: false })) }}
                       className={`relative flex flex-col items-start text-left p-6 rounded-2xl border-2 transition-all ${
                         isMaxed
                           ? 'border-gray-800 opacity-40 cursor-not-allowed'
@@ -859,6 +1053,7 @@ export default function PlayPage() {
                     </button>
                   )
                 })}
+                </div>
               </div>
 
               {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
@@ -866,8 +1061,7 @@ export default function PlayPage() {
               <button
                 type="button"
                 onClick={startPicks}
-                disabled={!name.trim() || !selectedCompetitionId}
-                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-black text-xl py-4 rounded-2xl transition-colors"
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-black text-xl py-4 rounded-2xl transition-colors"
               >
                 Start Picks →
               </button>
@@ -1070,6 +1264,8 @@ export default function PlayPage() {
           </div>
         </div>
       )}
+
+      {flowStep === 'setup' && <PoweredByFormulaX className="mt-10" />}
     </div>
   )
 }

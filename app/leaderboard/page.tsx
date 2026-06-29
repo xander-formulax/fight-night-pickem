@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { PoweredByFormulaX } from '@/app/components/PoweredByFormulaX'
 import type { Competition, Fight, Player, Pick, Score, PlayerWithScores } from '@/lib/types'
 
 function RankBadge({ rank }: { rank: number }) {
@@ -11,6 +12,35 @@ function RankBadge({ rank }: { rank: number }) {
   if (rank === 2) return <span className={`${base} text-3xl text-gray-300`}>2</span>
   if (rank === 3) return <span className={`${base} text-3xl text-amber-600`}>3</span>
   return <span className={`${base} text-2xl text-gray-400`}>{rank}</span>
+}
+
+// Standard competition ranking (ties share a rank: 1, 2, 2, 4)
+function computeRankMap(list: PlayerWithScores[]): Record<string, number> {
+  const m: Record<string, number> = {}
+  let lastTotal: number | null = null
+  let lastRank = 0
+  list.forEach((e, i) => {
+    if (lastTotal === null || e.total !== lastTotal) { lastRank = i + 1; lastTotal = e.total }
+    m[e.player.id] = lastRank
+  })
+  return m
+}
+
+// Green up / red down chip showing how many places moved since the last completed fight
+function PlaceChange({ delta }: { delta: number }) {
+  if (!delta) return null
+  const up = delta > 0
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-black px-1.5 py-0.5 rounded-md leading-none ${
+        up ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'
+      }`}
+      title={`${up ? 'Up' : 'Down'} ${Math.abs(delta)} place${Math.abs(delta) > 1 ? 's' : ''} since last fight`}
+    >
+      <span>{up ? '▲' : '▼'}</span>
+      <span>{Math.abs(delta)}</span>
+    </span>
+  )
 }
 
 function PlayerModal({
@@ -195,11 +225,12 @@ export default function LeaderboardPage() {
   const [expandedEntry, setExpandedEntry] = useState<PlayerWithScores | null>(null)
 
   const buildEntries = useCallback(
-    (players: Player[], scores: Score[], compId: string): PlayerWithScores[] => {
+    (players: Player[], scores: Score[], compId: string, excludeFightId?: string): PlayerWithScores[] => {
       const filtered = players.filter((p) => p.competition_id === compId)
       const map: Record<string, PlayerWithScores> = {}
       filtered.forEach((p) => { map[p.id] = { player: p, scores: {}, total: 0 } })
       scores.forEach((s) => {
+        if (excludeFightId && s.fight_id === excludeFightId) return
         if (map[s.player_id]) {
           map[s.player_id].scores[s.fight_id] = s
           map[s.player_id].total += s.fight_total
@@ -253,6 +284,16 @@ export default function LeaderboardPage() {
 
   const activeComp = competitions.find((c) => c.id === activeCompId)
   const entries = activeCompId ? buildEntries(allPlayers, allScores, activeCompId) : []
+
+  // Place movement since the last completed fight (needs ≥2 completed fights for a meaningful prior standing)
+  const completedFights = fights.filter((f) => f.status === 'complete')
+  const latestCompletedFight = completedFights.length >= 2
+    ? completedFights.reduce((a, b) => (b.fight_number > a.fight_number ? b : a))
+    : null
+  const currentRanks = computeRankMap(entries)
+  const prevRanks = latestCompletedFight && activeCompId
+    ? computeRankMap(buildEntries(allPlayers, allScores, activeCompId, latestCompletedFight.id))
+    : null
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -374,6 +415,9 @@ export default function LeaderboardPage() {
               const isFirst = rank === 1
               const isTop3 = rank <= 3
               const showEntryNum = nameCount[entry.player.name] > 1
+              const delta = prevRanks
+                ? (prevRanks[entry.player.id] ?? rank) - (currentRanks[entry.player.id] ?? rank)
+                : 0
               return (
                 <button
                   key={entry.player.id}
@@ -386,8 +430,9 @@ export default function LeaderboardPage() {
                       : 'bg-gray-900/60 border-gray-800/30'
                   }`}
                 >
-                  <div className="shrink-0 w-10 text-right">
+                  <div className="shrink-0 w-10 flex flex-col items-center gap-1">
                     <RankBadge rank={rank} />
+                    {prevRanks && <PlaceChange delta={delta} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div
@@ -441,6 +486,8 @@ export default function LeaderboardPage() {
           />
         )
       })()}
+
+      <PoweredByFormulaX className="mt-12 mb-2" />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { formatOdds } from '@/lib/scoring'
+import { PoweredByFormulaX, FormulaXLogo } from '@/app/components/PoweredByFormulaX'
 import type { Competition, Fight, Pick, Player, PrizeSplit, Score, StoppageBet } from '@/lib/types'
 import type { ImportedFight, ImportEventGroup } from '@/app/api/import-ufc-card/route'
 
@@ -76,6 +77,18 @@ function QRModal({ onClose }: { onClose: () => void }) {
               Reset to default
             </button>
           )}
+        </div>
+        <div className="flex items-center justify-center gap-2.5 pt-1">
+          <span className="text-gray-500 text-sm font-semibold uppercase tracking-wider">Powered by</span>
+          <a
+            href="https://www.formulaxconsulting.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Formula X Consulting — opens in a new tab"
+            className="inline-flex items-center transition-opacity hover:opacity-90 hover:scale-[1.03]"
+          >
+            <FormulaXLogo className="h-11 w-auto" />
+          </a>
         </div>
       </div>
     </div>
@@ -1114,13 +1127,14 @@ export default function AdminPage() {
     })
     const result = await res.json()
     if (!res.ok) setFightError(result.error ?? 'Failed to save.')
-    else { setShowAddFight(false); setEditingFightId(null); await loadData() }
+    else { setShowAddFight(false); setEditingFightId(null); if (fights.length === 0 && !data.id && eventPhase !== 'setup') await saveEventPhase('setup'); await loadData() }
     setFightSaving(false)
   }
 
   async function deleteFight(id: string) {
     if (!confirm('Delete this fight and all its picks?')) return
     await fetch('/api/delete-fight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fight_id: id }) })
+    if (fights.length === 1 && eventPhase !== 'setup') await saveEventPhase('setup')
     await loadData()
   }
 
@@ -1392,6 +1406,7 @@ export default function AdminPage() {
       setImportSuccess(`Imported ${data.count} fight${data.count !== 1 ? 's' : ''}! Review and adjust rounds as needed.`)
       setShowImport(false)
       setImportEvents([])
+      if (fights.length === 0 && eventPhase !== 'setup') await saveEventPhase('setup')
       await loadData()
     }
     setImportingSaving(false)
@@ -2956,6 +2971,8 @@ export default function AdminPage() {
           </div>
         </div>
       </section>}
+
+      <PoweredByFormulaX className="mt-12 mb-2" />
     </div>
   )
 }
