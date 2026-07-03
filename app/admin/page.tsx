@@ -708,12 +708,16 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
                         const entryRevenue = entrants.length * effectiveFee
                         const fightExpContrib = entryRevenue * simJackpotCut
                         const fightSurplus = jackpotExpContrib > 0 ? (fightExpContrib / jackpotExpContrib) * jackpotSurplus : 0
-                        const pot = Math.round(entryRevenue * (1 - simJackpotCut) + rollover + (fight.jackpot_rollover ?? 0) + fightSurplus)
+                        // `rollover` is the pot carried in from prior unclaimed fights. The whole
+                        // pot rolls forward intact, so on a no-winner fight the NEW rollover IS this
+                        // pot — not pot added on top of the carry (that double-counts every fight).
+                        const carriedIn = rollover
+                        const pot = Math.round(entryRevenue * (1 - simJackpotCut) + carriedIn + fightSurplus)
                         const bets = entrants.map(p => ({ player: p, bet: p.jackpotBets[fight.id] }))
                         const winner = result ? findJackpotWinner(bets, result) : null
                         const isDecision = result?.method === 'Decision'
 
-                        if (isDecision || !winner) rollover += pot
+                        if (isDecision || !winner) rollover = pot
                         else { simJackpotTotalPayouts += pot; rollover = 0 }
 
                         return (
@@ -726,7 +730,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
                               <span className="text-yellow-400 font-black">${pot.toFixed(0)}</span>
                             </div>
                             <div className="mt-1.5 text-xs text-gray-400">
-                              {entrants.length} entries · ${effectiveFee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}{simJackpotCut > 0 ? ` · ${Math.round(simJackpotCut*100)}% expense cut` : ''}
+                              {entrants.length} entries · ${effectiveFee} each{carriedIn > 0 ? ` · +$${carriedIn.toFixed(0)} carried in` : ''}{simJackpotCut > 0 ? ` · ${Math.round(simJackpotCut*100)}% expense cut` : ''}
                             </div>
                             {!result ? null : isDecision ? (
                               <p className="mt-1.5 text-xs text-orange-400 font-semibold">Decision — pot rolls over (${pot.toFixed(0)})</p>
