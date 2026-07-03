@@ -14,6 +14,7 @@ export async function GET() {
     poster_url: config.poster_url ?? '',
     jackpot_enabled: config.jackpot_enabled === 'true',
     jackpot_fee: config.jackpot_fee ?? '20',
+    jackpot_expense_cut_pct: config.jackpot_expense_cut_pct ?? '0',
     event_phase: config.event_phase ?? 'setup',
   })
 }
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
   if ('poster_url' in body) storageUpdates.poster_url = body.poster_url ?? ''
   if ('jackpot_enabled' in body) storageUpdates.jackpot_enabled = body.jackpot_enabled ? 'true' : 'false'
   if ('jackpot_fee' in body) storageUpdates.jackpot_fee = String(body.jackpot_fee ?? '20')
+  if ('jackpot_expense_cut_pct' in body) storageUpdates.jackpot_expense_cut_pct = String(Math.max(0, Math.min(100, parseFloat(body.jackpot_expense_cut_pct) || 0)))
   if ('event_phase' in body) storageUpdates.event_phase = String(body.event_phase ?? 'setup')
   if (Object.keys(storageUpdates).length > 0) await setStorageConfig(supabase, storageUpdates)
   return NextResponse.json({ success: true })

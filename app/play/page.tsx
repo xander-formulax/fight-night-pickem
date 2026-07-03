@@ -115,9 +115,9 @@ function JackpotPromoModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-x-0 top-0 h-[100dvh] z-[60] flex items-start justify-center overflow-y-auto p-4 bg-black/85 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative w-full max-w-sm rounded-3xl overflow-hidden border-2 border-yellow-500/60 shadow-[0_0_60px_-10px_rgba(234,179,8,0.6)]"
+        className="relative w-full max-w-sm my-auto rounded-3xl overflow-hidden border-2 border-yellow-500/60 shadow-[0_0_60px_-10px_rgba(234,179,8,0.6)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`px-6 pt-7 pb-6 text-center ${rollover > 0 ? 'bg-gradient-to-br from-orange-600 via-red-600 to-orange-700 animate-pulse' : 'bg-gradient-to-br from-yellow-500 via-amber-500 to-yellow-600'}`}>
@@ -164,9 +164,9 @@ function JackpotWinModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-x-0 top-0 h-[100dvh] z-[60] flex items-start justify-center overflow-y-auto p-4 bg-black/90 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative w-full max-w-sm rounded-3xl overflow-hidden border-2 border-green-400/70 shadow-[0_0_70px_-5px_rgba(34,197,94,0.7)]"
+        className="relative w-full max-w-sm my-auto rounded-3xl overflow-hidden border-2 border-green-400/70 shadow-[0_0_70px_-5px_rgba(34,197,94,0.7)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-green-600 px-6 pt-8 pb-7 text-center">
@@ -197,6 +197,7 @@ export default function PlayPage() {
   const [eventPhase, setEventPhase] = useState<'setup' | 'open' | 'live'>('setup')
   const [jackpotEnabled, setJackpotEnabled] = useState(false)
   const [jackpotFee, setJackpotFee] = useState('20')
+  const [jackpotExpenseCutPct, setJackpotExpenseCutPct] = useState('0')
 
   // Multi-entry state
   const [storedEntries, setStoredEntries] = useState<StoredEntry[]>([])
@@ -281,6 +282,7 @@ export default function PlayPage() {
       setEventPhase((settings.event_phase as 'setup' | 'open' | 'live') ?? 'setup')
       setJackpotEnabled(Boolean(settings.jackpot_enabled))
       setJackpotFee(String(settings.jackpot_fee ?? '20'))
+      setJackpotExpenseCutPct(String(settings.jackpot_expense_cut_pct ?? '0'))
     }
 
     if (compsData) setCompetitions(compsData)
@@ -372,9 +374,10 @@ export default function PlayPage() {
         if (!winner || winner.player_id !== pid) continue
         if (seen(`fn_jackpot_won_${f.id}_${pid}`)) continue
         const fee = parseFloat(f.stoppage_bet_fee ?? jackpotFee) || 20
+        const cut = (parseFloat(jackpotExpenseCutPct) || 0) / 100
         setJackpotWin({
           fightId: f.id,
-          amount: activated.length * fee + (f.jackpot_rollover ?? 0),
+          amount: Math.round(activated.length * fee * (1 - cut)) + (f.jackpot_rollover ?? 0),
           fightLabel: `Fight ${f.fight_number} — ${f.fighter_a} vs ${f.fighter_b}`,
           pick: `R${winner.round_pick} ${winner.minute_pick - 1}:${winner.second_pick.toString().padStart(2, '0')}`,
         })
@@ -392,7 +395,7 @@ export default function PlayPage() {
         }
       }
     }
-  }, [loading, viewingPlayer, fights, stoppageBets, jackpotEnabled, jackpotFee, jackpotWin, jackpotPromo])
+  }, [loading, viewingPlayer, fights, stoppageBets, jackpotEnabled, jackpotFee, jackpotExpenseCutPct, jackpotWin, jackpotPromo])
 
   function resetPicksToEmpty(fightList: Fight[]) {
     const next: Record<string, PickState> = {}
@@ -564,7 +567,7 @@ export default function PlayPage() {
           return (
             <JackpotPromoModal
               fight={f}
-              potTotal={activated * feeNum + rollover}
+              potTotal={Math.round(activated * feeNum * (1 - (parseFloat(jackpotExpenseCutPct) || 0) / 100)) + rollover}
               rollover={rollover}
               fee={fee}
               onClose={dismiss}
@@ -701,6 +704,11 @@ export default function PlayPage() {
                   <p className="text-gray-400 text-xs mb-4">
                     If the fight goes to decision, the pot rolls over to the next jackpot fight. Each second can only be claimed by one person — picks are final once confirmed.
                   </p>
+                  {(parseFloat(jackpotExpenseCutPct) || 0) > 0 && (
+                    <p className="text-gray-500 text-xs mb-4 -mt-2">
+                      {parseFloat(jackpotExpenseCutPct)}% of each entry goes toward event costs — the pot shown is what the winner takes home.
+                    </p>
+                  )}
                   <div className="space-y-4">
                     {jackpotFights.map((fight) => {
                       const fightBets = stoppageBets.filter((b) => b.fight_id === fight.id)
@@ -710,7 +718,8 @@ export default function PlayPage() {
                       const feeNum = parseFloat(fee) || 20
                       const activatedCount = fightBets.filter((b) => b.activated).length
                       const rollover = fight.jackpot_rollover ?? 0
-                      const potTotal = activatedCount * feeNum + rollover
+                      const jackpotCut = (parseFloat(jackpotExpenseCutPct) || 0) / 100
+                      const potTotal = Math.round(activatedCount * feeNum * (1 - jackpotCut)) + rollover
 
                       const takenInMinute = (r: number, m: number) =>
                         fightBets.filter((b) => b.round_pick === r && b.minute_pick === m).length
@@ -977,6 +986,14 @@ export default function PlayPage() {
     else setFlowStep('setup')
   }
 
+  // Every wizard step (and review) should open at the top — never make the
+  // player hunt up the page for the question they're supposed to answer.
+  useEffect(() => {
+    if (typeof flowStep === 'number' || flowStep === 'review') {
+      window.scrollTo({ top: 0, behavior: 'auto' })
+    }
+  }, [flowStep])
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 pb-32">
       <PlayerTabs />
@@ -1179,7 +1196,7 @@ export default function PlayPage() {
                 {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
 
                 {/* sticky nav */}
-                <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 py-3 z-40">
+                <div className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-40">
                   <div className="max-w-3xl mx-auto flex gap-3">
                     <button type="button" onClick={() => backFromFight(idx)} className="px-5 py-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-bold">← Back</button>
                     <button
@@ -1239,8 +1256,8 @@ export default function PlayPage() {
 
       {/* Confirm sheet */}
       {showConfirmSheet && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !submitting && setShowConfirmSheet(false)}>
-          <div className="w-full sm:max-w-md bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-x-0 top-0 h-[100dvh] z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !submitting && setShowConfirmSheet(false)}>
+          <div className="w-full sm:max-w-md max-h-[100dvh] overflow-y-auto bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-black text-white text-center">Lock in your picks?</h3>
             <p className="text-gray-300 text-sm text-center mt-1.5">You won't be able to change them.</p>
             <div className="mt-6 space-y-2.5">

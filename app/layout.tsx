@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { PosterBackground } from '@/app/components/PosterBackground'
@@ -8,6 +8,14 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: "UFC Fight Night Pick'em",
   description: 'Make your picks for Fight Night',
+}
+
+// viewportFit: 'cover' lets env(safe-area-inset-*) report real values on
+// notched phones, so bottom sheets and sticky nav bars clear the home indicator.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

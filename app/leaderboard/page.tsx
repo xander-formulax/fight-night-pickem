@@ -58,12 +58,12 @@ function PlayerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-x-0 top-0 h-[100dvh] z-50 flex items-start justify-center overflow-y-auto p-4"
       style={{ background: 'rgba(0,0,0,0.85)' }}
       onClick={onClose}
     >
       <div
-        className="bg-gray-900/95 backdrop-blur-md rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-gray-900/95 backdrop-blur-md rounded-2xl w-full max-w-lg my-auto max-h-[90dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

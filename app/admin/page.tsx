@@ -39,11 +39,11 @@ function QRModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      className="fixed inset-x-0 top-0 h-[100dvh] z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/80 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl max-w-sm w-full mx-4"
+        className="bg-white rounded-3xl p-8 flex flex-col items-center gap-4 shadow-2xl max-w-sm w-full my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="text-black font-black text-xl tracking-tight text-center">Scan to Play</p>
@@ -97,6 +97,12 @@ function QRModal({ onClose }: { onClose: () => void }) {
 
 // ─── shared primitives ─────────────────────────────────────────────────────
 
+// Reveal a just-opened inline panel by scrolling it into view, so an admin on a
+// phone never has to hunt down the page for a form that appeared off-screen.
+function revealPanel(id: string, block: ScrollLogicalPosition = 'center') {
+  if (typeof window === 'undefined') return
+  setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block }), 60)
+}
 
 function StatusBadge({ status }: { status: Fight['status'] }) {
   const cls = status === 'complete' ? 'bg-green-900 text-green-300' : status === 'locked' ? 'bg-yellow-900 text-yellow-300' : 'bg-blue-900 text-blue-300'
@@ -478,8 +484,8 @@ function findJackpotWinner(
   return winner
 }
 
-function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled, globalJackpotFee, onExit }: {
-  competitions: Competition[]; fights: Fight[]; partyCostTarget: number; jackpotEnabled: boolean; globalJackpotFee: string; onExit: () => void
+function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled, globalJackpotFee, jackpotExpenseCutPct, onExit }: {
+  competitions: Competition[]; fights: Fight[]; partyCostTarget: number; jackpotEnabled: boolean; globalJackpotFee: string; jackpotExpenseCutPct: string; onExit: () => void
 }) {
   const [counts, setCounts] = useState<Record<string, string>>({})
   const [jackpotAvgEntries, setJackpotAvgEntries] = useState('8')
@@ -492,6 +498,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
   const jackpotFights = jackpotEnabled ? fights : []
   const defaultFee = globalJackpotFee || '20'
   const effectiveFee = parseFloat(jackpotFee || defaultFee) || 20
+  const simJackpotCut = (parseFloat(jackpotExpenseCutPct) || 0) / 100
 
   function generatePlayers() {
     const pool = [...SIM_NAMES].sort(() => Math.random() - 0.5)
@@ -614,7 +621,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
                   </div>
                   <div className="self-end pb-1.5">
                     <span className="text-yellow-400 text-xs font-semibold">
-                      ≈ ${(parseInt(jackpotAvgEntries) || 0) * effectiveFee} pot per fight
+                      ≈ ${Math.round((parseInt(jackpotAvgEntries) || 0) * effectiveFee * (1 - simJackpotCut))} pot per fight{simJackpotCut > 0 ? ` (after ${Math.round(simJackpotCut * 100)}% cut)` : ''}
                     </span>
                   </div>
                 </div>
@@ -650,9 +657,6 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
         {/* Results */}
         {simRan && results.length > 0 && (() => {
           // Expense recovery — pick'em
-          const simAvgExpCutPct = competitions.length > 0
-            ? competitions.reduce((s, c) => s + (c.expense_cut_pct ?? 50), 0) / competitions.length / 100
-            : 0.5
           let pickEmExpContrib = 0
           competitions.forEach(c => {
             const cnt = players.filter(p => p.competition_id === c.id).length
@@ -663,7 +667,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
           jackpotFights.forEach(fight => {
             simJackpotEntryRevenue[fight.id] = players.filter(p => fight.id in p.jackpotBets).length * effectiveFee
           })
-          const jackpotExpContrib = Object.values(simJackpotEntryRevenue).reduce((s, r) => s + r * simAvgExpCutPct, 0)
+          const jackpotExpContrib = Object.values(simJackpotEntryRevenue).reduce((s, r) => s + r * simJackpotCut, 0)
           const totalExpContrib = pickEmExpContrib + jackpotExpContrib
           const surplus = partyCostTarget > 0 ? Math.max(0, totalExpContrib - partyCostTarget) : 0
           const expenseCovered = partyCostTarget > 0 ? Math.min(totalExpContrib, partyCostTarget) : totalExpContrib
@@ -702,9 +706,9 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
                         const result = results.find(r => r.fight_id === fight.id)
                         const entrants = players.filter(p => fight.id in p.jackpotBets)
                         const entryRevenue = entrants.length * effectiveFee
-                        const fightExpContrib = entryRevenue * simAvgExpCutPct
+                        const fightExpContrib = entryRevenue * simJackpotCut
                         const fightSurplus = jackpotExpContrib > 0 ? (fightExpContrib / jackpotExpContrib) * jackpotSurplus : 0
-                        const pot = Math.round(entryRevenue * (1 - simAvgExpCutPct) + rollover + (fight.jackpot_rollover ?? 0) + fightSurplus)
+                        const pot = Math.round(entryRevenue * (1 - simJackpotCut) + rollover + (fight.jackpot_rollover ?? 0) + fightSurplus)
                         const bets = entrants.map(p => ({ player: p, bet: p.jackpotBets[fight.id] }))
                         const winner = result ? findJackpotWinner(bets, result) : null
                         const isDecision = result?.method === 'Decision'
@@ -722,7 +726,7 @@ function SimulationPanel({ competitions, fights, partyCostTarget, jackpotEnabled
                               <span className="text-yellow-400 font-black">${pot.toFixed(0)}</span>
                             </div>
                             <div className="mt-1.5 text-xs text-gray-400">
-                              {entrants.length} entries · ${effectiveFee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}{simAvgExpCutPct > 0 ? ` · ${Math.round(simAvgExpCutPct*100)}% expense cut` : ''}
+                              {entrants.length} entries · ${effectiveFee} each{fight.jackpot_rollover ? ` · +$${fight.jackpot_rollover} rollover` : ''}{simJackpotCut > 0 ? ` · ${Math.round(simJackpotCut*100)}% expense cut` : ''}
                             </div>
                             {!result ? null : isDecision ? (
                               <p className="mt-1.5 text-xs text-orange-400 font-semibold">Decision — pot rolls over (${pot.toFixed(0)})</p>
@@ -971,6 +975,7 @@ export default function AdminPage() {
   // jackpot + event lifecycle
   const [jackpotEnabled, setJackpotEnabled] = useState(false)
   const [jackpotFee, setJackpotFee] = useState('20')
+  const [jackpotExpenseCutPct, setJackpotExpenseCutPct] = useState('0')
   const [jackpotSaving, setJackpotSaving] = useState(false)
   const [eventPhase, setEventPhase] = useState<'setup' | 'open' | 'live'>('setup')
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
@@ -1011,6 +1016,7 @@ export default function AdminPage() {
       if (settings.poster_url) setPosterUrl(settings.poster_url)
       setJackpotEnabled(Boolean(settings.jackpot_enabled))
       if (!silent) setJackpotFee(String(settings.jackpot_fee ?? '20'))
+      if (!silent) setJackpotExpenseCutPct(String(settings.jackpot_expense_cut_pct ?? '0'))
       setEventPhase((settings.event_phase as 'setup' | 'open' | 'live') ?? 'setup')
     }
     if (!silent) setDataLoading(false)
@@ -1139,13 +1145,14 @@ export default function AdminPage() {
   }
 
   // ── jackpot global settings ───────────────────────────────────────────────
-  async function saveJackpotSettings(enabled: boolean, fee: string) {
+  async function saveJackpotSettings(enabled: boolean, fee: string, cutPct: string = jackpotExpenseCutPct) {
     setJackpotSaving(true)
     setJackpotEnabled(enabled)
     setJackpotFee(fee)
+    setJackpotExpenseCutPct(cutPct)
     await fetch('/api/event-settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jackpot_enabled: enabled, jackpot_fee: fee }),
+      body: JSON.stringify({ jackpot_enabled: enabled, jackpot_fee: fee, jackpot_expense_cut_pct: cutPct }),
     })
     setJackpotSaving(false)
   }
@@ -1501,14 +1508,12 @@ export default function AdminPage() {
   const paidCount = players.filter((p) => p.paid).length
   const activatedCount = players.filter((p) => p.activated).length
 
-  const avgJackpotExpCutPct = competitions.length > 0
-    ? competitions.reduce((s, c) => s + (c.expense_cut_pct ?? 50), 0) / competitions.length / 100
-    : 0.5
+  const jackpotExpCut = (parseFloat(jackpotExpenseCutPct) || 0) / 100
   const jackpotExpenseContrib = fights
     .reduce((sum, fight) => {
       const activated = stoppageBets.filter((b) => b.fight_id === fight.id && b.activated).length
       const fee = parseFloat(fight.stoppage_bet_fee ?? jackpotFee) || 20
-      return sum + activated * fee * avgJackpotExpCutPct
+      return sum + activated * fee * jackpotExpCut
     }, 0)
   const expenseRecovery = calcExpenseRecovery(competitions, players, partyCostTarget, jackpotExpenseContrib)
 
@@ -1532,8 +1537,8 @@ export default function AdminPage() {
 
       {/* Lifecycle action confirmation */}
       {lifecycleConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !lifecycleBusy && setLifecycleConfirm(null)}>
-          <div className="w-full sm:max-w-md bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-x-0 top-0 h-[100dvh] z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => !lifecycleBusy && setLifecycleConfirm(null)}>
+          <div className="w-full sm:max-w-md max-h-[100dvh] overflow-y-auto bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-black text-white text-center">{lifecycleConfirm.title}</h3>
             <p className="text-gray-300 text-sm text-center mt-2">{lifecycleConfirm.message}</p>
             <div className="mt-6 space-y-2.5">
@@ -1570,8 +1575,8 @@ export default function AdminPage() {
         }
 
         return (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => sheetSaveState === 'idle' && setResultsSheetFightId(null)}>
-            <div className="w-full sm:max-w-lg bg-gray-900 rounded-t-3xl border-t border-gray-700 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-x-0 top-0 h-[100dvh] z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => sheetSaveState === 'idle' && setResultsSheetFightId(null)}>
+            <div className="w-full sm:max-w-lg bg-gray-900 rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-700 max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               {sheetSaveState === 'done' ? (
                 <div className="p-10 text-center">
                   <div className="text-6xl mb-3">✅</div>
@@ -1584,7 +1589,7 @@ export default function AdminPage() {
                   <p className="text-white font-bold text-lg">Calculating scores…</p>
                 </div>
               ) : (
-                <div className="p-6 space-y-5">
+                <div className="p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Fight {fight.fight_number} — Enter Results</p>
@@ -1714,6 +1719,7 @@ export default function AdminPage() {
           partyCostTarget={partyCostTarget}
           jackpotEnabled={jackpotEnabled}
           globalJackpotFee={jackpotFee}
+          jackpotExpenseCutPct={jackpotExpenseCutPct}
           onExit={() => setSimMode(false)}
         />
       )}
@@ -1820,16 +1826,31 @@ export default function AdminPage() {
                 {jackpotEnabled ? 'Jackpot ON for the night' : 'Jackpot OFF'}
               </span>
               {jackpotEnabled && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">Entry cost $</span>
-                  <input
-                    type="number" min={1} value={jackpotFee}
-                    onChange={(e) => setJackpotFee(e.target.value)}
-                    onBlur={(e) => saveJackpotSettings(true, e.target.value || '20')}
-                    className="w-20 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-green-600"
-                  />
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">Entry cost $</span>
+                    <input
+                      type="number" min={1} value={jackpotFee}
+                      onChange={(e) => setJackpotFee(e.target.value)}
+                      onBlur={(e) => saveJackpotSettings(true, e.target.value || '20')}
+                      className="w-20 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-green-600"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">Expense cut</span>
+                    <input
+                      type="number" min={0} max={100} value={jackpotExpenseCutPct}
+                      onChange={(e) => setJackpotExpenseCutPct(e.target.value)}
+                      onBlur={(e) => saveJackpotSettings(true, jackpotFee, String(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0))))}
+                      className="w-16 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-green-600"
+                    />
+                    <span className="text-sm text-gray-400">%</span>
+                    {(parseFloat(jackpotExpenseCutPct) || 0) > 0 && parseFloat(jackpotFee) > 0 && (
+                      <span className="text-xs text-gray-500">${(parseFloat(jackpotFee) * (parseFloat(jackpotExpenseCutPct) || 0) / 100).toFixed(2)}/entry to expenses · winner keeps {100 - (parseFloat(jackpotExpenseCutPct) || 0)}% of the pot</span>
+                    )}
+                  </div>
                   {jackpotSaving && <span className="text-xs text-gray-500">saving…</span>}
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -1841,7 +1862,7 @@ export default function AdminPage() {
         <div className="flex justify-between items-center mb-4">
           <SectionHeader>Prize Pool Setup</SectionHeader>
           {!showAddComp && (
-            <button onClick={() => { setShowAddComp(true); setEditingCompId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+            <button onClick={() => { setShowAddComp(true); setEditingCompId(null); revealPanel('admin-comp-form') }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
               + Add Pool
             </button>
           )}
@@ -1921,7 +1942,7 @@ export default function AdminPage() {
         </div>
 
         {showAddComp && (
-          <div className="mb-4">
+          <div id="admin-comp-form" className="mb-4 scroll-mt-4">
             <CompetitionForm
               initial={blankComp()}
               onSave={saveComp}
@@ -2100,13 +2121,13 @@ export default function AdminPage() {
           {(eventPhase === 'setup' || fights.length === 0) && (
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => { setShowImport((v) => !v); setImportError(''); setImportEvents([]); setImportSuccess('') }}
+                onClick={() => { const opening = !showImport; setShowImport(opening); setImportError(''); setImportEvents([]); setImportSuccess(''); if (opening) revealPanel('admin-import-panel') }}
                 className="bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
               >
                 Import
               </button>
               {!showAddFight && (
-                <button onClick={() => { setShowAddFight(true); setEditingFightId(null) }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+                <button onClick={() => { setShowAddFight(true); setEditingFightId(null); revealPanel('admin-fight-form') }} className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors">
                   + Add Fight
                 </button>
               )}
@@ -2116,7 +2137,7 @@ export default function AdminPage() {
 
         {/* Import panel */}
         {showImport && (
-          <div className="bg-gray-800 border border-orange-800/50 rounded-xl p-5 mb-4">
+          <div id="admin-import-panel" className="bg-gray-800 border border-orange-800/50 rounded-xl p-5 mb-4 scroll-mt-4">
             <div className="flex justify-between items-start mb-3">
               <div>
                 <p className="text-white font-bold">Import UFC Card from The Odds API</p>
@@ -2213,7 +2234,7 @@ export default function AdminPage() {
         )}
 
         {showAddFight && (
-          <div className="mb-4">
+          <div id="admin-fight-form" className="mb-4 scroll-mt-4">
             <FightForm initial={{ ...blankFight(), fight_number: String(fights.length + 1) }} onSave={saveFight} onCancel={() => { setShowAddFight(false); setFightError('') }} saving={fightSaving} error={fightError} />
           </div>
         )}
@@ -2243,7 +2264,7 @@ export default function AdminPage() {
             const form = resultForms[fight.id]
             const fightBetCount = stoppageBets.filter((b) => b.fight_id === fight.id).length
             return (
-              <div key={fight.id} className="bg-gray-900 rounded-xl overflow-hidden">
+              <div key={fight.id} id={`fight-card-${fight.id}`} className="bg-gray-900 rounded-xl overflow-hidden scroll-mt-4">
                 {/* Fight header */}
                 <div className="p-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -2330,6 +2351,7 @@ export default function AdminPage() {
                             if (fight.stoppage_actual_round != null) {
                               setStopActual((prev) => ({ ...prev, [fight.id]: { round: String(fight.stoppage_actual_round), minute: String(fight.stoppage_actual_minute ?? ''), second: String(fight.stoppage_actual_second ?? '0') } }))
                             }
+                            revealPanel(`fight-card-${fight.id}`, 'start')
                           }}
                           className="text-xs text-gray-400 hover:text-gray-300 shrink-0 pt-0.5"
                         >
