@@ -397,6 +397,14 @@ export default function PlayPage() {
     }
   }, [loading, viewingPlayer, fights, stoppageBets, jackpotEnabled, jackpotFee, jackpotExpenseCutPct, jackpotWin, jackpotPromo])
 
+  // Every wizard step (and review) should open at the top — never make the
+  // player hunt up the page for the question they're supposed to answer.
+  useEffect(() => {
+    if (typeof flowStep === 'number' || flowStep === 'review') {
+      window.scrollTo({ top: 0, behavior: 'auto' })
+    }
+  }, [flowStep])
+
   function resetPicksToEmpty(fightList: Fight[]) {
     const next: Record<string, PickState> = {}
     fightList.forEach((f) => { next[f.id] = { winner_pick: '', method_pick: '', round_pick: '' } })
@@ -985,14 +993,6 @@ export default function PlayPage() {
     else if (isAddingEntry) cancelAdd()
     else setFlowStep('setup')
   }
-
-  // Every wizard step (and review) should open at the top — never make the
-  // player hunt up the page for the question they're supposed to answer.
-  useEffect(() => {
-    if (typeof flowStep === 'number' || flowStep === 'review') {
-      window.scrollTo({ top: 0, behavior: 'auto' })
-    }
-  }, [flowStep])
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 pb-32">

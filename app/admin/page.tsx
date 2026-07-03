@@ -2767,11 +2767,11 @@ export default function AdminPage() {
           if (!winnerBet) continue
           const fee = parseFloat(fight.stoppage_bet_fee ?? '20') || 20
           const fightRevenue = fightBets.length * fee
-          const fightExpContrib = fightRevenue * avgJackpotExpCutPct
+          const fightExpContrib = fightRevenue * jackpotExpCut
           const fightSurplus = expenseRecovery.jackpotContrib > 0
             ? (fightExpContrib / expenseRecovery.jackpotContrib) * expenseRecovery.jackpotSurplus
             : 0
-          const pot = Math.round(fightRevenue * (1 - avgJackpotExpCutPct) + (fight.jackpot_rollover ?? 0) + fightSurplus)
+          const pot = Math.round(fightRevenue * (1 - jackpotExpCut) + (fight.jackpot_rollover ?? 0) + fightSurplus)
           const m = winnerBet.minute_pick - 1
           const s = String(winnerBet.second_pick).padStart(2, '0')
           jackpotPayouts.push({
