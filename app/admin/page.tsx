@@ -981,6 +981,7 @@ export default function AdminPage() {
   const [jackpotFee, setJackpotFee] = useState('20')
   const [jackpotExpenseCutPct, setJackpotExpenseCutPct] = useState('0')
   const [jackpotSaving, setJackpotSaving] = useState(false)
+  const [autoCompleting, setAutoCompleting] = useState(false)
   const [eventPhase, setEventPhase] = useState<'setup' | 'open' | 'live'>('setup')
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
 
@@ -1159,6 +1160,18 @@ export default function AdminPage() {
       body: JSON.stringify({ jackpot_enabled: enabled, jackpot_fee: fee, jackpot_expense_cut_pct: cutPct }),
     })
     setJackpotSaving(false)
+  }
+
+  async function autocompleteMissingPicks() {
+    setAutoCompleting(true)
+    try {
+      const res = await fetch('/api/autocomplete-picks', { method: 'POST' })
+      const result = await res.json()
+      if (!res.ok) { alert(result.error ?? 'Auto-complete failed'); return }
+      await loadData(true)
+    } finally {
+      setAutoCompleting(false)
+    }
   }
 
   // ── event lifecycle ───────────────────────────────────────────────────────
@@ -2495,6 +2508,30 @@ export default function AdminPage() {
       {activeTab === 'players' && (
         <section className="mb-10">
           <SectionHeader>Manage Players</SectionHeader>
+          {(() => {
+            const openFights = fights.filter((f) => f.status === 'upcoming')
+            const missingByPlayer = players.map((pl) => openFights.filter((f) => !allPicks.some((p) => p.player_id === pl.id && p.fight_id === f.id)).length)
+            const playersMissing = missingByPlayer.filter((n) => n > 0).length
+            const missingPickCount = missingByPlayer.reduce((s, n) => s + n, 0)
+            if (missingPickCount === 0) return null
+            return (
+              <div className="mb-4 bg-amber-950/40 border border-amber-700/50 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-amber-300 font-bold text-sm">
+                    {playersMissing} {playersMissing === 1 ? 'entry is' : 'entries are'} missing {missingPickCount} pick{missingPickCount === 1 ? '' : 's'}
+                  </p>
+                  <p className="text-amber-500/80 text-xs mt-0.5">Fill them with random picks so every paid entry is scored on a full card.</p>
+                </div>
+                <button
+                  onClick={autocompleteMissingPicks}
+                  disabled={autoCompleting}
+                  className="bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors shrink-0"
+                >
+                  {autoCompleting ? 'Filling…' : '🎲 Auto-complete missing picks'}
+                </button>
+              </div>
+            )
+          })()}
           {players.length === 0 ? (
             <div className="bg-gray-900 rounded-xl p-8 text-center text-gray-400">No players yet.</div>
           ) : (

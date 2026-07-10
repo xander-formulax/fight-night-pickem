@@ -45,6 +45,22 @@ const METHOD_META: { value: Method; label: string; icon: string }[] = [
   { value: 'Decision', label: 'Decision', icon: '📋' },
 ]
 
+function randInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+// Pure coin-flip pick — winner, method, and (if a finish) round are all uniformly
+// random. Deliberately NOT weighted by odds; this is for players who just want in.
+function randomPickState(fight: Fight): PickState {
+  const winner = Math.random() < 0.5 ? fight.fighter_a : fight.fighter_b
+  const method = METHOD_META[randInt(0, METHOD_META.length - 1)].value
+  return {
+    winner_pick: winner,
+    method_pick: method,
+    round_pick: method === 'Decision' ? '' : String(randInt(1, fight.rounds)),
+  }
+}
+
 function isPickComplete(pick: PickState | undefined): boolean {
   if (!pick?.winner_pick) return false
   if (!pick.method_pick) return false
@@ -459,6 +475,41 @@ export default function PlayPage() {
     }
   }
 
+  // Jackpot autopick — grab a random time slot that isn't already claimed and
+  // lock it in. Retries on the (rare) race where the DB rejects a taken second.
+  async function autopickJackpot(fight: Fight) {
+    if (!viewingPlayer) return
+    const claimed = new Set(
+      stoppageBets.filter((b) => b.fight_id === fight.id).map((b) => `${b.round_pick}-${b.minute_pick}-${b.second_pick}`)
+    )
+    updateDraft(fight.id, { placing: true, error: '' })
+    for (let attempt = 0; attempt < 8; attempt++) {
+      let slot: { round: number; minute: number; second: number } | null = null
+      for (let t = 0; t < 400; t++) {
+        const round = randInt(1, fight.rounds)
+        const minute = randInt(1, 5)   // internal minute_pick (1–5); clock shows minute-1
+        const second = randInt(0, 59)
+        if (!claimed.has(`${round}-${minute}-${second}`)) { slot = { round, minute, second }; break }
+      }
+      if (!slot) { updateDraft(fight.id, { placing: false, error: 'No open times left — pick one manually.' }); return }
+      const res = await fetch('/api/stoppage-bet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fight_id: fight.id, player_id: viewingPlayer.id, round_pick: slot.round, minute_pick: slot.minute, second_pick: slot.second }),
+      })
+      const result = await res.json()
+      if (res.ok) {
+        setStoppageBets((prev) => [...prev.filter((b) => b.id !== result.bet.id), result.bet])
+        setStoppageDrafts((prev) => { const next = { ...prev }; delete next[fight.id]; return next })
+        return
+      }
+      if (res.status === 409) { claimed.add(`${slot.round}-${slot.minute}-${slot.second}`); continue }
+      updateDraft(fight.id, { placing: false, error: result.error ?? 'Failed to place pick' })
+      return
+    }
+    updateDraft(fight.id, { placing: false, error: 'Could not grab an open time — please pick manually.' })
+  }
+
   async function handleSubmit() {
     setError('')
 
@@ -799,6 +850,19 @@ export default function PlayPage() {
                                       </button>
                                     ))}
                                   </div>
+                                  <div className="flex items-center gap-3 mt-4">
+                                    <div className="h-px flex-1 bg-gray-700/70" />
+                                    <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">or</span>
+                                    <div className="h-px flex-1 bg-gray-700/70" />
+                                  </div>
+                                  <button
+                                    onClick={() => autopickJackpot(fight)}
+                                    disabled={draft.placing}
+                                    className="w-full mt-3 bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-700 disabled:text-gray-300 text-black font-black py-3 rounded-xl transition-colors"
+                                  >
+                                    {draft.placing ? 'Grabbing a time…' : '🎲 Autopick a random time'}
+                                  </button>
+                                  <p className="text-xs text-gray-400 text-center mt-2 italic">Locks in a random open time for you — final once placed.</p>
                                 </div>
                               )}
 
@@ -968,7 +1032,7 @@ export default function PlayPage() {
     setFlowStep('setup')
     setActiveEntryIdx(Math.max(0, storedEntries.length - 1))
   }
-  function startPicks() {
+  function ensureNameAndPool(): boolean {
     const missName = !name.trim()
     const missPool = !selectedCompetitionId
     if (missName || missPool) {
@@ -977,11 +1041,37 @@ export default function PlayPage() {
       if (missName) parts.push('your name')
       if (missPool) parts.push('a prize pool')
       setError(`Missing ${parts.join(' and ')} — ${missName && missPool ? 'fill them in' : 'fill it in'} to continue.`)
-      return
+      return false
     }
     setError('')
     setMissing({ name: false, pool: false })
+    return true
+  }
+
+  function startPicks() {
+    if (!ensureNameAndPool()) return
     setFlowStep(upcomingFights.length > 0 ? 0 : 'review')
+  }
+
+  // "I don't know anything, just get me in" — coin-flip the whole card and jump
+  // straight to review so the player only has to confirm.
+  function autopickAll() {
+    if (!ensureNameAndPool()) return
+    setPicks((prev) => {
+      const next = { ...prev }
+      upcomingFights.forEach((f) => { next[f.id] = randomPickState(f) })
+      return next
+    })
+    setFlowStep('review')
+  }
+
+  // Per-fight autopick inside the wizard — fill this one randomly and advance.
+  function autopickFight(idx: number) {
+    const fight = upcomingFights[idx]
+    if (!fight) return
+    setError('')
+    setPicks((prev) => ({ ...prev, [fight.id]: randomPickState(fight) }))
+    setFlowStep(idx < upcomingFights.length - 1 ? idx + 1 : 'review')
   }
   function nextFromFight(i: number) {
     setError('')
@@ -1082,6 +1172,21 @@ export default function PlayPage() {
               >
                 Start Picks →
               </button>
+
+              <div className="flex items-center gap-3 my-1">
+                <div className="h-px flex-1 bg-gray-700/70" />
+                <span className="text-gray-500 text-xs font-semibold uppercase tracking-wider">or</span>
+                <div className="h-px flex-1 bg-gray-700/70" />
+              </div>
+
+              <button
+                type="button"
+                onClick={autopickAll}
+                className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-bold text-lg py-3.5 rounded-2xl transition-colors"
+              >
+                🎲 Autopick my whole card
+              </button>
+              <p className="text-center text-gray-500 text-xs -mt-1">Don&apos;t know the fights? We&apos;ll pick at random — you just review &amp; submit.</p>
             </>
           )}
 
@@ -1192,6 +1297,16 @@ export default function PlayPage() {
                     Potential: <span className="text-white font-black text-lg">+{pot.total}</span> pts
                   </p>
                 )}
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => autopickFight(idx)}
+                    className="text-gray-400 hover:text-white text-sm font-semibold underline decoration-dotted underline-offset-4 transition-colors"
+                  >
+                    🎲 Not sure? Autopick this fight
+                  </button>
+                </div>
 
                 {error && <div className="bg-red-900/40 border border-red-700 rounded-xl p-4 text-red-300 text-sm">{error}</div>}
 
