@@ -940,7 +940,7 @@ export default function AdminPage() {
   // fight management sheets
   const [resultsSheetFightId, setResultsSheetFightId] = useState<string | null>(null)
   const [sheetSaveState, setSheetSaveState] = useState<'idle' | 'saving' | 'done'>('idle')
-  const [lifecycleConfirm, setLifecycleConfirm] = useState<null | { title: string; message: string; confirmLabel: string; onConfirm: () => void | Promise<void> }>(null)
+  const [lifecycleConfirm, setLifecycleConfirm] = useState<null | { title: string; message: string; confirmLabel: string; onConfirm: () => void | Promise<void>; danger?: boolean }>(null)
 
   // stoppage jackpot
   const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
@@ -1492,6 +1492,25 @@ export default function AdminPage() {
     setClearingPlayer('')
   }
 
+  async function deletePlayer(playerId: string) {
+    setClearingPlayer(`${playerId}-delete`)
+    const res = await fetch('/api/delete-player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: playerId }),
+    })
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}))
+      alert(result.error ?? 'Failed to delete entry')
+      setClearingPlayer('')
+      return
+    }
+    setExpandedPlayerId(null)
+    setPickEdits((prev) => { const next = { ...prev }; delete next[playerId]; return next })
+    await loadData(true)
+    setClearingPlayer('')
+  }
+
   // ── reset ─────────────────────────────────────────────────────────────────
 
   async function resetEvent() {
@@ -1562,7 +1581,7 @@ export default function AdminPage() {
               <button
                 onClick={async () => { const fn = lifecycleConfirm.onConfirm; setLifecycleConfirm(null); await fn() }}
                 disabled={lifecycleBusy}
-                className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-black text-lg py-4 rounded-2xl transition-colors"
+                className={`w-full disabled:bg-gray-700 text-white font-black text-lg py-4 rounded-2xl transition-colors ${lifecycleConfirm.danger ? 'bg-red-600 hover:bg-red-500' : 'bg-green-600 hover:bg-green-500'}`}
               >
                 {lifecycleConfirm.confirmLabel}
               </button>
@@ -2667,6 +2686,21 @@ export default function AdminPage() {
                               {clearingPlayer === `${player.id}-bet` ? 'Clearing…' : 'Clear Jackpot Bet'}
                             </button>
                           )}
+                          <button
+                            onClick={() => setLifecycleConfirm({
+                              danger: true,
+                              title: 'Delete this entry?',
+                              message: player.activated
+                                ? `⚠️ ${player.name} has already PAID ${comp?.entry_fee ?? ''}. Deleting removes this entry, its picks${playerBets.length > 0 ? ', and jackpot bet' : ''}. They can enter again.`
+                                : `Removes ${player.name}'s entry, its picks${playerBets.length > 0 ? ', and jackpot bet' : ''}${comp ? `, and clears their ${comp.entry_fee} payment due` : ''}. They can enter again.`,
+                              confirmLabel: 'Delete Entry',
+                              onConfirm: () => deletePlayer(player.id),
+                            })}
+                            disabled={clearingPlayer === `${player.id}-delete`}
+                            className="ml-auto bg-red-700 hover:bg-red-600 disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            {clearingPlayer === `${player.id}-delete` ? 'Deleting…' : 'Delete Entry'}
+                          </button>
                         </div>
                       </div>
                     )}
