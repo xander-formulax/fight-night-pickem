@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { PoweredByFormulaX } from '@/app/components/PoweredByFormulaX'
-import type { Competition, Fight, Player, Pick, Score, PlayerWithScores } from '@/lib/types'
+import type { Competition, Fight, Player, Pick, Score, PlayerWithScores, StoppageBet } from '@/lib/types'
 
 function RankBadge({ rank }: { rank: number }) {
   const base = 'w-10 text-center inline-block font-black'
@@ -188,18 +188,35 @@ function ordinal(n: number) {
   if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd'; return `${n}th`
 }
 
+// Mirrors the admin's calcExpenseRecovery exactly, so the prizes players see on
+// the leaderboard match what the organizer actually pays out. Both the jackpot's
+// contribution to the shared party-cost target and the (unguarded) surplus
+// redistribution must match the admin, or the two would diverge when the target
+// is over-collected.
 function calcPrizePool(
   comp: Competition,
   allComps: Competition[],
   allPlayers: Player[],
-  partyCostTarget: number
+  fights: Fight[],
+  stoppageBets: StoppageBet[],
+  partyCostTarget: number,
+  jackpotFee: string,
+  jackpotExpenseCutPct: string
 ) {
   let totalExpenseContrib = 0
   allComps.forEach((c) => {
     const paid = allPlayers.filter((p) => p.competition_id === c.id && p.paid).length
     totalExpenseContrib += paid * parseFee(c.entry_fee) * ((c.expense_cut_pct ?? 50) / 100)
   })
-  const surplus = partyCostTarget > 0 ? Math.max(0, totalExpenseContrib - partyCostTarget) : 0
+  // Jackpot's expense contribution toward the shared target (activated bets only).
+  const jackpotExpCut = (parseFloat(jackpotExpenseCutPct) || 0) / 100
+  totalExpenseContrib += fights.reduce((sum, f) => {
+    const activated = stoppageBets.filter((b) => b.fight_id === f.id && b.activated).length
+    const fee = parseFloat(f.stoppage_bet_fee ?? jackpotFee) || 20
+    return sum + activated * fee * jackpotExpCut
+  }, 0)
+
+  const surplus = Math.max(0, totalExpenseContrib - partyCostTarget)
   const paidCount = allPlayers.filter((p) => p.competition_id === comp.id && p.paid).length
   const fee = parseFee(comp.entry_fee)
   const poolExpenseContrib = paidCount * fee * ((comp.expense_cut_pct ?? 50) / 100)
@@ -220,6 +237,9 @@ export default function LeaderboardPage() {
   const [allScores, setAllScores] = useState<Score[]>([])
   const [allPicks, setAllPicks] = useState<Pick[]>([])
   const [partyCostTarget, setPartyCostTarget] = useState(0)
+  const [stoppageBets, setStoppageBets] = useState<StoppageBet[]>([])
+  const [jackpotFee, setJackpotFee] = useState('20')
+  const [jackpotExpenseCutPct, setJackpotExpenseCutPct] = useState('0')
   const [eventTitle, setEventTitle] = useState('')
   const [lastUpdate, setLastUpdate] = useState('')
   const [expandedEntry, setExpandedEntry] = useState<PlayerWithScores | null>(null)
@@ -243,13 +263,14 @@ export default function LeaderboardPage() {
 
   const loadData = useCallback(async () => {
     const supabase = getSupabaseBrowser()
-    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }, { data: picksData }, settingsRes] =
+    const [{ data: compsData }, { data: fightsData }, { data: playersData }, { data: scoresData }, { data: picksData }, { data: betsData }, settingsRes] =
       await Promise.all([
         supabase.from('competitions').select('*').order('created_at'),
         supabase.from('fights').select('*').order('fight_number'),
         supabase.from('players').select('*'),
         supabase.from('scores').select('*'),
         supabase.from('picks').select('*'),
+        supabase.from('stoppage_bets').select('*'),
         fetch('/api/event-settings'),
       ])
 
@@ -261,9 +282,12 @@ export default function LeaderboardPage() {
     if (playersData) setAllPlayers(playersData)
     if (scoresData) setAllScores(scoresData)
     if (picksData) setAllPicks(picksData)
+    if (betsData) setStoppageBets(betsData)
     if (settingsRes.ok) {
       const s = await settingsRes.json()
       setPartyCostTarget(parseFloat(s.party_cost_target) || 0)
+      setJackpotFee(String(s.jackpot_fee ?? '20'))
+      setJackpotExpenseCutPct(String(s.jackpot_expense_cut_pct ?? '0'))
       if (s.event_title) setEventTitle(s.event_title)
     }
     setLastUpdate(new Date().toLocaleTimeString())
@@ -346,7 +370,7 @@ export default function LeaderboardPage() {
 
       {/* Prize display */}
       {activeComp && (() => {
-        const { paidCount, prizePool, places } = calcPrizePool(activeComp, competitions, allPlayers, partyCostTarget)
+        const { paidCount, prizePool, places } = calcPrizePool(activeComp, competitions, allPlayers, fights, stoppageBets, partyCostTarget, jackpotFee, jackpotExpenseCutPct)
         if (paidCount === 0 || places.length === 0) return null
         return (
           <div className="text-center mb-6">

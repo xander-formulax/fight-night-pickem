@@ -2811,16 +2811,30 @@ export default function AdminPage() {
             const ranked = compPlayers
               .map((p) => ({ player: p, total: scores.filter((s) => s.player_id === p.id).reduce((sum, s) => sum + s.fight_total, 0) }))
               .sort((a, b) => b.total - a.total)
-            for (const split of comp.prize_splits ?? []) {
-              const entry = ranked[split.place - 1]
-              if (!entry) continue
-              pickEmPayouts.push({
-                playerId: entry.player.id,
-                playerName: entry.player.name,
-                label: `${comp.name} — ${ordinal(split.place)} Place`,
-                amount: Math.round(poolData.actualPrizePool * split.pct / 100),
-                paid: !!(entry.player.payout_paid),
-              })
+            const pctByPlace = new Map((comp.prize_splits ?? []).map((s) => [s.place, s.pct]))
+            // Walk the standings, grouping ties. Players tied at a rank occupy
+            // consecutive places and split the combined prize % of those places evenly.
+            let gi = 0
+            while (gi < ranked.length) {
+              let gj = gi
+              while (gj + 1 < ranked.length && ranked[gj + 1].total === ranked[gi].total) gj++
+              const groupSize = gj - gi + 1
+              let pctSum = 0
+              for (let place = gi + 1; place <= gj + 1; place++) pctSum += (pctByPlace.get(place) ?? 0)
+              if (pctSum > 0) {
+                const perPct = pctSum / groupSize
+                const placeLabel = groupSize > 1 ? `Tied ${ordinal(gi + 1)}–${ordinal(gj + 1)}` : `${ordinal(gi + 1)} Place`
+                for (let k = gi; k <= gj; k++) {
+                  pickEmPayouts.push({
+                    playerId: ranked[k].player.id,
+                    playerName: ranked[k].player.name,
+                    label: `${comp.name} — ${placeLabel}`,
+                    amount: Math.round(poolData.actualPrizePool * perPct / 100),
+                    paid: !!(ranked[k].player.payout_paid),
+                  })
+                }
+              }
+              gi = gj + 1
             }
           }
         }
