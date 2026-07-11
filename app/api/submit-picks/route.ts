@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { getStorageConfig } from '@/lib/storage-config'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -10,6 +11,13 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin()
+
+  // Server-side phase gate: a phone that loaded the entry form before the event
+  // went live must not be able to submit picks once the fights have started.
+  const config = await getStorageConfig(supabase)
+  if ((config.event_phase ?? 'setup') === 'live') {
+    return NextResponse.json({ error: 'Picks are closed — the event has started.' }, { status: 403 })
+  }
 
   const { data: competition } = await supabase
     .from('competitions')

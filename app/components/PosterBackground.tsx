@@ -14,13 +14,17 @@ export function PosterBackground() {
   if (!url) return null
   return (
     <div
-      className="fixed inset-0 -z-10 pointer-events-none"
+      className="fixed -z-10 pointer-events-none"
       style={{
+        // Oversized by the blur radius so blurred edges don't show a halo
+        inset: '-12px',
         backgroundImage: `url('${url}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center top',
         backgroundRepeat: 'no-repeat',
-        filter: 'brightness(1.05) saturate(1.3)',
+        // Blur lives here (self-contained) rather than as a backdrop-filter on the
+        // content wrapper, which would break fixed positioning for all children.
+        filter: 'brightness(1.05) saturate(1.3) blur(4px)',
       }}
     />
   )

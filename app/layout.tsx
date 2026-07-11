@@ -23,7 +23,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${inter.className} bg-gray-950 text-white min-h-screen`}>
         <PosterBackground />
-        <div className="relative min-h-screen bg-black/55 backdrop-blur-sm">
+        {/* NOTE: no backdrop-blur here — a backdrop-filter on this wrapper would
+            become the containing block for every fixed child (bottom sheets, modals,
+            sticky navs), pinning them to the document instead of the viewport.
+            The blur lives on the poster layer itself instead. */}
+        <div className="relative min-h-screen bg-black/55">
           {children}
         </div>
       </body>

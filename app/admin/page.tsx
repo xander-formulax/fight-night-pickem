@@ -1515,7 +1515,11 @@ export default function AdminPage() {
 
   async function resetEvent() {
     setResetting(true)
-    await fetch('/api/reset-event', { method: 'POST' })
+    const res = await fetch('/api/reset-event', { method: 'POST' })
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}))
+      alert(result.error ?? 'Reset failed — data may be partially cleared. Refresh and check.')
+    }
     setResetConfirm(false)
     setResetting(false)
     await loadData()
