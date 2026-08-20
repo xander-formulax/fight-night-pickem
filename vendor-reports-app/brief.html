@@ -1,0 +1,632 @@
+<title>Vendor Reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+  :root {
+    --ground:    #F1F3EF;
+    --surface:   #FFFFFF;
+    --surface-2: #E7EAE4;
+    --ink:       #191F21;
+    --ink-soft:  #5A6863;
+    --ink-faint: #8B9791;
+    --rule:      #D5DAD3;
+    --rule-firm: #B8BFB7;
+    --accent:    #0B6E4F;
+    --accent-in: #FFFFFF;
+    --warn:      #B26612;
+    --crit:      #A32E27;
+    --shadow:    0 1px 2px rgba(25,31,33,.06), 0 8px 24px -12px rgba(25,31,33,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #121618;
+      --surface:   #1B2124;
+      --surface-2: #242B2E;
+      --ink:       #E6EBE7;
+      --ink-soft:  #9DAAA4;
+      --ink-faint: #74827C;
+      --rule:      #2C3438;
+      --rule-firm: #3E484C;
+      --accent:    #4DBF8F;
+      --accent-in: #0C1512;
+      --warn:      #E0A055;
+      --crit:      #E0736A;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:    #121618;
+    --surface:   #1B2124;
+    --surface-2: #242B2E;
+    --ink:       #E6EBE7;
+    --ink-soft:  #9DAAA4;
+    --ink-faint: #74827C;
+    --rule:      #2C3438;
+    --rule-firm: #3E484C;
+    --accent:    #4DBF8F;
+    --accent-in: #0C1512;
+    --warn:      #E0A055;
+    --crit:      #E0736A;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 0 28px 120px;
+  }
+  .col { max-width: 68ch; }
+
+  /* ---- masthead ---- */
+  .mast {
+    padding: 72px 0 30px;
+    border-bottom: 2px solid var(--ink);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .mast-tag {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  .mast-tag span:not(:last-child)::after {
+    content: " /";
+    color: var(--ink-faint);
+  }
+  h1 {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.7rem, 7vw, 4.4rem);
+    line-height: .96;
+    letter-spacing: -.033em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .mast-sub {
+    font-size: 1.16rem;
+    color: var(--ink-soft);
+    max-width: 56ch;
+    margin: 0;
+  }
+
+  /* ---- the call ---- */
+  .call {
+    margin-top: 40px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 3px;
+    padding: 30px 34px;
+    box-shadow: var(--shadow);
+  }
+  .call p { margin: 0; max-width: 62ch; }
+  .call p + p { margin-top: 14px; }
+  .call strong { font-weight: 600; }
+
+  /* ---- sections ---- */
+  section { margin-top: 82px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h2 {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.6rem, 3.4vw, 2.15rem);
+    line-height: 1.1;
+    letter-spacing: -.022em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.06rem;
+    letter-spacing: -.008em;
+    margin: 34px 0 8px;
+  }
+  p { margin: 0 0 16px; }
+  a { color: var(--accent); }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .855em;
+    background: var(--surface-2);
+    padding: .1em .38em;
+    border-radius: 2px;
+  }
+
+  /* ---- email mockup ---- */
+  .mockup-note {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    letter-spacing: .05em;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  .mail {
+    background: var(--surface);
+    border: 1px solid var(--rule-firm);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    max-width: 660px;
+  }
+  .mail-head {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--rule-firm);
+    padding: 16px 22px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 5px 14px;
+    font-size: 13.5px;
+  }
+  .mail-head dt {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-top: 3px;
+  }
+  .mail-head dd { margin: 0; color: var(--ink-soft); }
+  .mail-head dd.subj { color: var(--ink); font-weight: 600; }
+
+  .mail-body { padding: 30px 28px 34px; }
+  .rep-brand {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 3px;
+  }
+  .rep-title {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: -.02em;
+    margin: 0 0 3px;
+    line-height: 1.15;
+  }
+  .rep-dates { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 18px; }
+  .rep-count {
+    font-size: 14px;
+    padding: 11px 15px;
+    background: var(--surface-2);
+    border-radius: 3px;
+    margin: 0 0 8px;
+  }
+  .rep-count b { font-weight: 600; }
+
+  .job { border-top: 1px solid var(--rule); padding: 22px 0 4px; }
+  .job-name {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.09rem;
+    margin: 0 0 2px;
+    letter-spacing: -.008em;
+  }
+  .job-addr { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 14px; }
+
+  .prog { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .bar {
+    flex: 0 0 148px;
+    height: 7px;
+    background: var(--surface-2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .prog-txt {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+  }
+  .stage {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: var(--accent-in);
+    padding: 3px 9px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  .lines { margin: 0 0 16px; }
+  .grp { margin-bottom: 13px; }
+  .grp-h {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin: 0 0 5px;
+  }
+  .grp-h.done { color: var(--accent); }
+  .grp-h.now  { color: var(--ink); }
+  .grp-h.next { color: var(--ink-soft); }
+  .grp-h.wait { color: var(--warn); }
+  .grp ul { margin: 0; padding-left: 17px; }
+  .grp li { font-size: 14.5px; margin-bottom: 3px; }
+  .grp li em { font-style: normal; color: var(--ink-soft); }
+
+  .quiet-note {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border-radius: 3px;
+    padding: 11px 14px;
+    margin: 0 0 14px;
+  }
+  .mail-foot {
+    border-top: 1px solid var(--rule);
+    margin-top: 22px;
+    padding-top: 16px;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; margin: 22px 0; border: 1px solid var(--rule); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--surface); }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---- readiness scorecard ---- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 14px; margin: 24px 0 30px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--sev, var(--rule-firm));
+    border-radius: 3px;
+    padding: 17px 18px;
+  }
+  .card.crit { --sev: var(--crit); }
+  .card.warn { --sev: var(--warn); }
+  .card.ok   { --sev: var(--accent); }
+  .card-n {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 2.05rem;
+    line-height: 1;
+    letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+    margin: 0 0 5px;
+    color: var(--sev, var(--ink));
+  }
+  .card-l { font-size: 13.5px; color: var(--ink-soft); margin: 0; }
+
+  /* ---- steps ---- */
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 22px 0 0; }
+  ol.steps li {
+    counter-increment: s;
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 15px;
+    padding: 13px 0;
+    border-top: 1px solid var(--rule);
+    align-items: start;
+  }
+  ol.steps li::before {
+    content: counter(s, decimal-leading-zero);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    padding-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.steps li > div { max-width: 62ch; }
+
+  ul.plain { padding-left: 19px; margin: 0 0 16px; max-width: 66ch; }
+  ul.plain li { margin-bottom: 7px; }
+
+  .nope { color: var(--ink-soft); }
+  .nope b { color: var(--ink); font-weight: 600; }
+
+  footer {
+    margin-top: 90px;
+    padding-top: 22px;
+    border-top: 2px solid var(--ink);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    justify-content: space-between;
+  }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 0 18px 80px; }
+    .mast { padding-top: 46px; }
+    .call { padding: 24px 22px; }
+    .mail-body { padding: 24px 19px 28px; }
+    .mail-head { padding: 14px 18px; }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="mast-tag">
+      <span>Dragon Transport</span><span>monday Vibe app</span><span>Design brief</span><span>20 Aug 2026</span>
+    </div>
+    <h1>Vendor Reports</h1>
+    <p class="mast-sub">A weekly progress email to every dealership, built from the work already tracked in monday — so they stop calling to ask how it's going.</p>
+  </header>
+
+  <div class="call">
+    <p><strong>Build it as a monday Vibe app, <code>object</code> variant</strong> — the same shape as the four apps already running in this workspace. It reads Vendors, Jobs and Tasks live, computes each vendor's week, renders an HTML email, and sends after someone clicks Send.</p>
+    <p>It adds <strong>no new boards</strong> and three columns to one existing board. The report is a computed view, never stored data. <strong>The build is the easy part</strong> — the real work is that 80 of 141 jobs currently have no vendor attached, and would appear in nobody's report.</p>
+  </div>
+
+  <section>
+    <p class="eyebrow">The product</p>
+    <h2>What lands in their inbox</h2>
+    <div class="col">
+      <p>Everything else in this brief exists to produce this email. Real vendor and job names from the account; progress figures are illustrative.</p>
+    </div>
+
+    <p class="mockup-note">MOCKUP — Friday send, one section per active home</p>
+
+    <div class="mail">
+      <dl class="mail-head">
+        <dt>From</dt><dd>Dragon Transport &lt;dragon.transports@gmail.com&gt;</dd>
+        <dt>To</dt><dd>mkeelin@titanfactorydirect.com</dd>
+        <dt>Subject</dt><dd class="subj">Titan Midland — weekly progress, week of Aug 17</dd>
+      </dl>
+
+      <div class="mail-body">
+        <p class="rep-brand">Dragon Transport</p>
+        <h3 class="rep-title" style="margin-top:0">Weekly Progress Report</h3>
+        <p class="rep-dates">Titan Midland · August 17–21, 2026</p>
+        <p class="rep-count"><b>6 active homes</b> · 3 milestones completed this week · 4 crews scheduled next week</p>
+
+        <div class="job">
+          <p class="job-name">William Pierce</p>
+          <p class="job-addr">1204 CR 210, Seminole, TX 79360</p>
+          <div class="prog">
+            <span class="bar"><i style="width:64%"></i></span>
+            <span class="prog-txt">7 of 11 steps</span>
+            <span class="stage">Set Up</span>
+          </div>
+          <div class="lines">
+            <div class="grp">
+              <p class="grp-h done">✓ Completed this week</p>
+              <ul>
+                <li>Pad poured — <em>Tue, Aug 18</em></li>
+                <li>Home delivered to site — <em>Thu, Aug 20</em></li>
+              </ul>
+            </div>
+            <div class="grp">
+              <p class="grp-h now">● Happening now</p>
+              <ul><li>Set Up — crew on site since Thursday</li></ul>
+            </div>
+            <div class="grp">
+              <p class="grp-h next">→ Coming next week</p>
+              <ul>
+                <li>Skirting — <em>Mon, Aug 24</em></li>
+                <li>Electric Hookup — <em>Wed, Aug 26</em></li>
+              </ul>
+            </div>
+            <div class="grp">
+              <p class="grp-h wait">⏳ Waiting on</p>
+              <ul><li>Set Up Permit — submitted, awaiting county</li></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="job">
+          <p class="job-name">Keyla Duran</p>
+          <p class="job-addr">3417 W Ohio Ave, Midland, TX 79703</p>
+          <div class="prog">
+            <span class="bar"><i style="width:100%"></i></span>
+            <span class="prog-txt">9 of 9 steps</span>
+            <span class="stage">Complete</span>
+          </div>
+          <div class="lines">
+            <div class="grp">
+              <p class="grp-h done">✓ Completed this week</p>
+              <ul><li>Trim Out finished — <em>Wed, Aug 19</em>. Home is finished and ready for the buyer.</li></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="job">
+          <p class="job-name">Andrea Rojas</p>
+          <p class="job-addr">905 E Cuthbert Ave, Midland, TX 79701</p>
+          <div class="prog">
+            <span class="bar"><i style="width:18%"></i></span>
+            <span class="prog-txt">2 of 11 steps</span>
+            <span class="stage">Pad</span>
+          </div>
+          <p class="quiet-note">No movement this week — we're holding for the pad inspection. Pad crew is scheduled <b>Tue, Aug 25</b>.</p>
+        </div>
+
+        <p class="mail-foot">Questions on any home above? Reply to this email or call the office at (432) 555-0148.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>Voice rules</h3>
+      <p>No crew names, no subcontractor names, no prices, no task IDs. Dates read as <em>"Tue, Aug 18."</em> A phase with no movement says nothing rather than "no update" — silence beats filler. And a home with a genuinely quiet week gets the third treatment above: say so plainly, then give the next date. That sentence <em>is</em> the reassurance the vendor was going to call for.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">The idea that makes it work</p>
+    <h2>Sixteen columns become one honest number</h2>
+    <div class="col">
+      <p>Every Job carries up to 16 optional phases — Pad, Delivery, Tie Downs, Skirting, Septic, Trim Out and the rest. Each has a <code>…?</code> column saying whether it applies to <em>this</em> home, and a relation pointing at the Task that does the work.</p>
+      <p><strong>Scope × task status = "7 of 11 steps."</strong> That single figure is the most valuable thing the app computes, and nothing in monday shows it today. It is also what makes a progress bar honest: a home that needs no septic isn't penalised for not having it.</p>
+      <p>One correction first — the Jobs board has <strong>two</strong> <code>*Site Checks</code> relation columns. Delete one, or Site Check double-counts in every report.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Phase</th><th>Scope column</th><th>Job → Task</th><th>Task → Job</th></tr></thead>
+        <tbody>
+          <tr><td>Site Check</td><td><code>color_mm2qm6zb</code></td><td><code>board_relation_mm2q8sc1</code></td><td><code>board_relation_mm2qkn1</code></td></tr>
+          <tr><td>Pad</td><td><code>color_mm2k7s99</code></td><td><code>board_relation_mm2m2958</code></td><td><code>board_relation_mm2mgk2m</code></td></tr>
+          <tr><td>Foundation</td><td><code>color_mm2qs16d</code></td><td><code>board_relation_mm2qtwjy</code></td><td><code>board_relation_mm2qqhy6</code></td></tr>
+          <tr><td>Break and Wrap</td><td><code>color_mm2qtpcz</code></td><td><code>board_relation_mm2qgcwy</code></td><td><code>board_relation_mm2q2p9w</code></td></tr>
+          <tr><td>Delivery</td><td><code>color_mm2k79p8</code></td><td><code>board_relation_mm2m6y9s</code></td><td><code>board_relation_mm2mhvf</code></td></tr>
+          <tr><td>Tie Downs</td><td><code>color_mm66xtqf</code></td><td><code>board_relation_mm665mqd</code></td><td><code>board_relation_mm66q0eb</code></td></tr>
+          <tr><td>Set Up</td><td><code>color_mm2kyeav</code></td><td><code>board_relation_mm2ms4mb</code></td><td><code>board_relation_mm2mfp9r</code></td></tr>
+          <tr><td>Steps</td><td><code>color_mm2p7ksn</code></td><td><code>board_relation_mm2tkzqz</code></td><td><code>board_relation_mm2tr88</code></td></tr>
+          <tr><td>Skirting</td><td><code>color_mm2q5cjc</code></td><td><code>board_relation_mm2qg0cj</code></td><td><code>board_relation_mm2q7gx5</code></td></tr>
+          <tr><td>Electric Service</td><td><code>color_mm2q2npg</code></td><td><code>board_relation_mm2qgtf4</code></td><td><code>board_relation_mm2qmy5r</code></td></tr>
+          <tr><td>Electric Hookup</td><td><code>color_mm2mtqf1</code></td><td><code>board_relation_mm2vbqvw</code></td><td><code>board_relation_mm2v7hxr</code></td></tr>
+          <tr><td>Water Well</td><td><code>color_mm2nt68q</code></td><td><code>board_relation_mm2nfkr9</code></td><td><code>board_relation_mm2nf5tr</code></td></tr>
+          <tr><td>Water Hookup</td><td><code>color_mm2qy1ht</code></td><td><code>board_relation_mm2qdf8f</code></td><td><code>board_relation_mm2qpy4j</code></td></tr>
+          <tr><td>Septic Install</td><td><code>color_mm2q78hf</code></td><td><code>board_relation_mm2qm8xv</code></td><td><code>board_relation_mm2qkw17</code></td></tr>
+          <tr><td>Septic Hookup</td><td><code>color_mm2qa62q</code></td><td><code>board_relation_mm2q32n9</code></td><td><code>board_relation_mm2qpg4s</code></td></tr>
+          <tr><td>Trim Out</td><td><code>color_mm2qqrab</code></td><td><code>board_relation_mm2qxtvf</code></td><td><code>board_relation_mm2qhre0</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <p>One rule worth writing down: treat <strong>Invoiced as complete</strong>. It's a billing state, not a work state — 83 tasks sit there today and would otherwise read to the vendor as unfinished.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Readiness</p>
+    <h2>What has to be fixed first</h2>
+    <div class="col">
+      <p>Measured against live account data today. These aren't polish items — the first three decide whether the reports are trustworthy or actively misleading.</p>
+    </div>
+
+    <div class="cards">
+      <div class="card crit">
+        <p class="card-n num">80</p>
+        <p class="card-l">of 141 jobs have no <b>Bill&nbsp;to</b> vendor. They'd appear in no report at all.</p>
+      </div>
+      <div class="card crit">
+        <p class="card-n num">6</p>
+        <p class="card-l">of the 17 active vendors have no email — including Titan Midland (14 jobs) and Palm Harbor (7).</p>
+      </div>
+      <div class="card warn">
+        <p class="card-n num">3&times;</p>
+        <p class="card-l">Solitaire exists as four spellings, Palm Harbor as three, Titan as two.</p>
+      </div>
+      <div class="card warn">
+        <p class="card-n num">112</p>
+        <p class="card-l">of 576 tasks have a Schedule set — so "coming next week" starts thin.</p>
+      </div>
+      <div class="card ok">
+        <p class="card-n num">24</p>
+        <p class="card-l">of 576 tasks have photos. Include them when present; don't build around them yet.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <p>A vendor receiving a report that omits half their homes is <em>worse</em> than receiving nothing — it reads as "you lost my house." So the app ships with a <strong>Readiness tab</strong> that surfaces these as a live worklist: <em>12 jobs missing a vendor, 3 vendors missing an email.</em> Cheap to build, and it turns cleanup into a weekly habit instead of a one-time project that decays by month two.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Constraints</p>
+    <h2>Three platform limits worth knowing before you start</h2>
+    <div class="col">
+      <ul class="plain">
+        <li><strong>Vibe apps can't run background jobs.</strong> They only run while someone is looking at them — so the weekly send is human-triggered. That's a fine outcome: a proactive customer email deserves a glance before it goes, especially while the data gaps above are open.</li>
+        <li><strong>Files sent from a monday File column arrive as a link, not an attachment — and non-account-members can't open it.</strong> So no PDF. The report is HTML in the email body, which is better anyway: the vendor reads it on their phone without opening anything.</li>
+        <li><strong>Vibe can send formatted HTML email</strong> through a connected Gmail or Outlook account. That's the delivery path. Worth confirming on day one of the build, since everything else depends on it.</li>
+      </ul>
+      <p>Unattended, fully-automatic sending is the one thing that needs a different architecture — a scheduler, which means leaving Vibe for a hosted app. Revisit after a month of the human-approved loop, not before.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Operations</p>
+    <h2>Ten minutes every Friday</h2>
+    <div class="col">
+      <ol class="steps">
+        <li><div>A recurring monday automation pings the office coordinator Friday morning.</div></li>
+        <li><div>They open Vendor Reports. It lists every vendor set to <em>Weekly Report: On</em>, each with a readiness dot — green for ready, amber for missing email or unassigned jobs.</div></li>
+        <li><div>Click a vendor, read the generated report, optionally type a note at the top, hit Send.</div></li>
+        <li><div><strong>Send all ready</strong> clears the happy path in one click.</div></li>
+        <li><div>On send: the email goes out, the exact HTML is posted as an Update on the Vendor item, and <em>Last Report Sent</em> is stamped.</div></li>
+      </ol>
+      <h3>What changes in monday</h3>
+      <p>Three columns on the Vendors board — <strong>Report Recipients</strong> (semicolon-separated text, which monday's Gmail integration fans out to each address), <strong>Weekly Report</strong> (On / Paused), and <strong>Last Report Sent</strong> (date). Nothing else. Sent history lives in the Vendor item's Update feed, which answers "what did we tell them last week?" when a vendor calls back.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Scope</p>
+    <h2>Deliberately not in v1</h2>
+    <div class="col">
+      <p class="nope">No PDF generation. No vendor login or portal. No photo galleries. No per-vendor branding. No editing schedules from inside the report. No vendor replies routed back into monday. <b>No unattended sending.</b></p>
+      <p>Each of these is a reasonable month-three conversation. None of them is what makes a vendor stop calling — <em>a reliable email that arrives every Friday</em> is.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Four calls to make</p>
+    <h2>Open decisions</h2>
+    <div class="col">
+      <ul class="plain">
+        <li><strong>Send day.</strong> Friday afternoon reads as "here's your week, here's what's next." Monday morning reads as a plan. Friday fits the reassurance goal better — recommend Friday.</li>
+        <li><strong>Which contact.</strong> The billing email is usually accounts-payable, not the person chasing status. That's why Report Recipients is separate — but someone has to go collect those addresses.</li>
+        <li><strong>Include recently finished homes?</strong> Recommend yes, for 14 days after completion, marked Complete. Otherwise a finished home silently vanishes from the report instead of visibly landing.</li>
+        <li><strong>The word "vendor."</strong> If these go to dealerships, the email body should just use the dealership's own name and never the category noun at all — which sidesteps the vendor-versus-customer question entirely.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span>Dragon Transport · Vendor Reports</span>
+    <span>Design brief · 20 Aug 2026</span>
+  </footer>
+
+</div>
