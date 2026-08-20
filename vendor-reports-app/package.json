@@ -9,7 +9,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "dry-run": "node scripts/dry-run.js",
+    "preview": "node test/preview.js"
   },
   "dependencies": {
     "@mondaycom/apps-sdk": "^3.0.5",

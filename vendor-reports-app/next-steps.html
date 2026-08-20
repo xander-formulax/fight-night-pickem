@@ -1,0 +1,387 @@
+<title>Vendor Reports Launch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+  :root {
+    --ground:    #F1F3EF;
+    --surface:   #FFFFFF;
+    --surface-2: #E7EAE4;
+    --ink:       #191F21;
+    --ink-soft:  #5A6863;
+    --ink-faint: #8B9791;
+    --rule:      #D5DAD3;
+    --rule-firm: #B8BFB7;
+    --accent:    #0B6E4F;
+    --accent-in: #FFFFFF;
+    --warn:      #B26612;
+    --crit:      #A32E27;
+    --shadow:    0 1px 2px rgba(25,31,33,.06), 0 8px 24px -12px rgba(25,31,33,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #121618;
+      --surface:   #1B2124;
+      --surface-2: #242B2E;
+      --ink:       #E6EBE7;
+      --ink-soft:  #9DAAA4;
+      --ink-faint: #74827C;
+      --rule:      #2C3438;
+      --rule-firm: #3E484C;
+      --accent:    #4DBF8F;
+      --accent-in: #0C1512;
+      --warn:      #E0A055;
+      --crit:      #E0736A;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:    #121618;
+    --surface:   #1B2124;
+    --surface-2: #242B2E;
+    --ink:       #E6EBE7;
+    --ink-soft:  #9DAAA4;
+    --ink-faint: #74827C;
+    --rule:      #2C3438;
+    --rule-firm: #3E484C;
+    --accent:    #4DBF8F;
+    --accent-in: #0C1512;
+    --warn:      #E0A055;
+    --crit:      #E0736A;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 26px 110px; }
+  .col { max-width: 66ch; }
+
+  .mast {
+    padding: 66px 0 28px;
+    border-bottom: 2px solid var(--ink);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .kicker {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; font-weight: 500; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent);
+    display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0;
+  }
+  .kicker span:not(:last-child)::after { content: " /"; color: var(--ink-faint); }
+  h1 {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700; font-size: clamp(2.4rem, 6.5vw, 3.9rem);
+    line-height: .98; letter-spacing: -.032em; margin: 0; text-wrap: balance;
+  }
+  .lede { font-size: 1.13rem; color: var(--ink-soft); max-width: 54ch; margin: 0; }
+
+  .now {
+    margin-top: 36px; background: var(--surface);
+    border: 1px solid var(--rule); border-left: 4px solid var(--accent);
+    border-radius: 3px; padding: 26px 30px; box-shadow: var(--shadow);
+  }
+  .now p { margin: 0; max-width: 60ch; }
+  .now p + p { margin-top: 13px; }
+
+  section { margin-top: 68px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; font-weight: 500; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-faint);
+    margin: 0 0 12px; padding-bottom: 11px; border-bottom: 1px solid var(--rule);
+  }
+  h2 {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600; font-size: clamp(1.5rem, 3.2vw, 2rem);
+    line-height: 1.12; letter-spacing: -.022em; margin: 0 0 16px; text-wrap: balance;
+  }
+  p { margin: 0 0 15px; }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .85em; background: var(--surface-2);
+    padding: .12em .4em; border-radius: 2px; word-break: break-word;
+  }
+
+  /* ---- parallel tracks ---- */
+  .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 14px; margin: 22px 0 0; }
+  .track {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-top: 3px solid var(--warn); border-radius: 3px; padding: 18px 20px;
+  }
+  .track h3 {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600; font-size: 1rem; margin: 0 0 7px;
+  }
+  .track p { font-size: 14.5px; color: var(--ink-soft); margin: 0; }
+
+  /* ---- steps ---- */
+  .steps { list-style: none; padding: 0; margin: 26px 0 0; display: flex; flex-direction: column; gap: 12px; }
+  .step {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+    padding: 20px 22px; display: grid; grid-template-columns: 38px 1fr; gap: 4px 16px;
+  }
+  .step-n {
+    grid-row: 1 / span 3;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 13px; font-weight: 600; color: var(--accent);
+    font-variant-numeric: tabular-nums; padding-top: 3px;
+  }
+  .step-h {
+    font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600; font-size: 1.07rem; margin: 0; letter-spacing: -.008em;
+  }
+  .meta { display: flex; flex-wrap: wrap; gap: 7px; margin: 7px 0 9px; }
+  .chip {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 2px; border: 1px solid var(--rule-firm); color: var(--ink-soft);
+  }
+  .chip.me { background: var(--accent); border-color: var(--accent); color: var(--accent-in); }
+  .chip.you { border-color: var(--accent); color: var(--accent); }
+  .step-b { margin: 0; font-size: 15px; color: var(--ink-soft); max-width: 60ch; }
+  .step-b + .step-b { margin-top: 9px; }
+  .step-b strong { color: var(--ink); font-weight: 600; }
+  .win {
+    margin-top: 11px; padding: 9px 13px; background: var(--surface-2);
+    border-radius: 3px; font-size: 14px; color: var(--ink-soft); max-width: 60ch;
+  }
+  .win b {
+    color: var(--accent); font-weight: 600;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+    display: block; margin-bottom: 2px;
+  }
+  pre {
+    background: var(--surface-2); border: 1px solid var(--rule); border-radius: 3px;
+    padding: 12px 14px; overflow-x: auto; margin: 11px 0 0; max-width: 60ch;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .later { display: flex; flex-direction: column; gap: 10px; margin: 24px 0 0; padding: 0; list-style: none; }
+  .later li {
+    display: grid; grid-template-columns: 38px 1fr; gap: 16px;
+    padding: 13px 0; border-top: 1px solid var(--rule); align-items: baseline;
+  }
+  .later li::before {
+    content: attr(data-n);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 13px; font-weight: 600; color: var(--ink-faint); font-variant-numeric: tabular-nums;
+  }
+  .later b { font-weight: 600; }
+  .later span { color: var(--ink-soft); }
+
+  dl.glossary { margin: 22px 0 0; display: flex; flex-direction: column; gap: 0; }
+  dl.glossary div { padding: 13px 0; border-top: 1px solid var(--rule); }
+  dl.glossary dt {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12.5px; font-weight: 600; color: var(--ink); margin-bottom: 3px;
+  }
+  dl.glossary dd { margin: 0; font-size: 15px; color: var(--ink-soft); max-width: 62ch; }
+
+  footer {
+    margin-top: 76px; padding-top: 20px; border-top: 2px solid var(--ink);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between;
+  }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 0 17px 76px; }
+    .mast { padding-top: 42px; }
+    .now { padding: 21px 19px; }
+    .step { padding: 17px 17px; grid-template-columns: 28px 1fr; gap: 4px 11px; }
+    .later li { grid-template-columns: 28px 1fr; gap: 11px; }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="kicker"><span>Dragon Transport</span><span>Vendor Reports</span><span>What happens next</span></p>
+    <h1>Vendor Reports Launch</h1>
+    <p class="lede">The code is written and tested. Everything left is setup, cleanup, and one deploy — in the order that gets you seeing real results soonest.</p>
+  </header>
+
+  <div class="now">
+    <p><strong>Where things stand.</strong> The app is built and pushed. Today I ran it against your live monday data and it produced a real report for Titan Midland — 5 homes, 4 tasks completed this week, correct progress bars on every home.</p>
+    <p><strong>So the code works.</strong> What's left is not really programming. It's getting a token, cleaning up the boards, and one deploy at the end.</p>
+    <p><strong>Read Phase 1 only today.</strong> Phases 2 and 3 are there so you can see the shape of it — they are not this week's problem.</p>
+  </div>
+
+  <section>
+    <p class="eyebrow">Start these now — they run in the background</p>
+    <h2>Two things with a long tail</h2>
+    <div class="col">
+      <p>Both take real-world time you can't compress, so starting them today costs nothing and saves weeks later. Neither blocks Phase 1.</p>
+    </div>
+    <div class="tracks">
+      <div class="track">
+        <h3>Fill in "Bill to" on jobs</h3>
+        <p>Roughly 70 of your active jobs have no vendor attached, so they'd appear in nobody's report. This is office work, not dev work, and it can start immediately. Every job you fix is one more home that shows up.</p>
+      </div>
+      <div class="track">
+        <h3>Sort out a sending domain</h3>
+        <p>Reports can't go out from a Gmail address without landing in spam. You need a real domain with SPF and DKIM records. DNS changes take 24–48 hours to take effect, so this is the item most likely to hold up launch day.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Phase 1 · This week</p>
+    <h2>See it working on your own data</h2>
+    <div class="col">
+      <p>Five steps. At the end you'll have real reports for real vendors sitting on your screen, without a single email being sent to anyone.</p>
+    </div>
+
+    <ol class="steps">
+
+      <li class="step">
+        <span class="step-n">01</span>
+        <p class="step-h">Add three columns to the Vendors board</p>
+        <div class="meta"><span class="chip me">I do this</span><span class="chip">2 minutes</span></div>
+        <p class="step-b">The app needs somewhere to store who gets each report, whether a vendor is switched on, and when they were last sent to. Those columns don't exist yet.</p>
+        <p class="step-b"><strong>Just tell me to go and I'll add them.</strong> I didn't do it already because it changes a live board that your team uses.</p>
+        <div class="win"><b>Done when</b>Report Recipients, Weekly Report, and Last Report Sent appear at the right end of the Vendors board.</div>
+      </li>
+
+      <li class="step">
+        <span class="step-n">02</span>
+        <p class="step-h">Get yourself a monday API token</p>
+        <div class="meta"><span class="chip you">You</span><span class="chip">5 minutes</span></div>
+        <p class="step-b">In monday: click your <strong>avatar</strong> (bottom left) → <strong>Developers</strong> → <strong>My Access Tokens</strong> → <strong>Show</strong> → copy it.</p>
+        <p class="step-b">This is how the app reads your boards. Treat it like a password for your whole monday account — <strong>don't paste it into this chat</strong>, don't email it, don't commit it to GitHub.</p>
+        <div class="win"><b>Done when</b>You have a very long string of letters and numbers on your clipboard, starting with <code>eyJ</code>.</div>
+      </li>
+
+      <li class="step">
+        <span class="step-n">03</span>
+        <p class="step-h">Install Node.js</p>
+        <div class="meta"><span class="chip you">You</span><span class="chip">10 minutes</span></div>
+        <p class="step-b">Node is the program that runs this app — like needing Excel installed before you can open a spreadsheet. Go to <strong>nodejs.org</strong> and download the big green <strong>LTS</strong> button. Accept every default.</p>
+        <p class="step-b">Then open <strong>Terminal</strong> (Mac: Cmd+Space, type "terminal") or <strong>PowerShell</strong> (Windows: Start menu, type "powershell") and type this, then Enter:</p>
+        <pre><code>node --version</code></pre>
+        <div class="win"><b>Done when</b>It prints something like <code>v22.14.0</code>. Any number 20 or higher is fine. If it says "command not found", restart your computer and try again — that fixes it nine times out of ten.</div>
+      </li>
+
+      <li class="step">
+        <span class="step-n">04</span>
+        <p class="step-h">Get the code onto your computer</p>
+        <div class="meta"><span class="chip you">You</span><span class="chip">15 minutes</span></div>
+        <p class="step-b">Install <strong>GitHub Desktop</strong> from desktop.github.com — it's the click-based way to do this, and you don't need to learn git commands today.</p>
+        <p class="step-b">Sign in, then <strong>File → Clone repository</strong> → pick <code>xander-formulax/fight-night-pickem</code>. Once it's downloaded, use the <strong>Current Branch</strong> dropdown at the top and switch to <code>claude/vendor-reports-app-design-xs0s9w</code>.</p>
+        <p class="step-b">The app lives in the <code>vendor-reports-app</code> folder inside it. (Yes, it's sitting in your pick'em repo — that's the shared-repo thing we talked about. It works fine for now.)</p>
+        <div class="win"><b>Done when</b>You can open that folder and see <code>README.md</code>, <code>package.json</code>, and a <code>src</code> folder.</div>
+      </li>
+
+      <li class="step">
+        <span class="step-n">05</span>
+        <p class="step-h">Run it — and see your real reports</p>
+        <div class="meta"><span class="chip you">You</span><span class="chip">5 minutes</span></div>
+        <p class="step-b">In Terminal, type <code>cd </code> (with a space), then <strong>drag the <code>vendor-reports-app</code> folder onto the Terminal window</strong> — it fills in the path for you. Press Enter. Then:</p>
+        <pre><code>npm install</code></pre>
+        <p class="step-b">That downloads the pieces the app needs. It only has to be done once. Then paste your token from step 2 in place of <code>YOUR_TOKEN</code>:</p>
+        <pre><code>MONDAY_API_TOKEN=YOUR_TOKEN npm run dry-run -- --write</code></pre>
+        <p class="step-b"><strong>This cannot send email.</strong> There is no email code in that script at all — it reads your boards, builds the reports, and writes them to files.</p>
+        <div class="win"><b>Done when</b>You get a table of your vendors in the Terminal, plus a new <code>out</code> folder full of <code>.html</code> files. Double-click any of them to see exactly what that vendor would receive.</div>
+      </li>
+
+    </ol>
+  </section>
+
+  <section>
+    <p class="eyebrow">Phase 2 · The next few weeks</p>
+    <h2>Make the data good enough to send</h2>
+    <div class="col">
+      <p>None of this is programming, and it's the part that decides whether the reports are worth receiving. The dry run from step 5 prints this list for you, so you can watch it shrink.</p>
+    </div>
+    <ul class="later">
+      <li data-n="06"><span><b>Fill in "Bill to" on every active job.</b> The big one. A vendor whose report is missing half their homes will trust it less than no report at all.</span></li>
+      <li data-n="07"><span><b>Merge the duplicate vendor records.</b> Solitaire currently exists as four separate vendors, Palm Harbor as three, Titan as several. Each duplicate splits one dealership's homes across two reports.</span></li>
+      <li data-n="08"><span><b>Collect report recipient emails.</b> Not the billing email — that's usually accounts-payable. You want whoever actually calls asking for status.</span></li>
+      <li data-n="09"><span><b>Delete the duplicate <code>*Site Checks</code> column on Jobs.</b> There are two with the same name. I can do this one for you.</span></li>
+      <li data-n="10"><span><b>Get crews setting Schedule on tasks.</b> Right now most work has no date, so "Still to do" mostly reads "Not yet scheduled" — which is the weakest version of the report.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <p class="eyebrow">Phase 3 · Launch</p>
+    <h2>Put it on monday's servers</h2>
+    <div class="col">
+      <p>This is the only genuinely technical stretch, and we do it together — mostly me running commands and you clicking approve.</p>
+    </div>
+    <ul class="later">
+      <li data-n="11"><span><b>Pick an email provider and verify the domain.</b> Postmark or Resend. This is where the DNS work from the top pays off.</span></li>
+      <li data-n="12"><span><b>Create the app in monday's Developer Center</b> and deploy the code with <code>mapps code:push</code>.</span></li>
+      <li data-n="13"><span><b>Register the Friday schedule.</b> One command. Test it by hand first with <code>mapps scheduler:run</code>.</span></li>
+      <li data-n="14"><span><b>Pilot with two vendors for two weeks.</b> Pick the two most likely to tell you honestly if something reads wrong.</span></li>
+      <li data-n="15"><span><b>Turn on everyone else.</b> Flip Weekly Report to "On" a few vendors at a time.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <p class="eyebrow">Reference</p>
+    <h2>Words I keep using</h2>
+    <dl class="glossary">
+      <div>
+        <dt>Terminal / PowerShell</dt>
+        <dd>A window where you type commands instead of clicking. Everything you type there is undoable unless it starts with <code>rm</code> or <code>del</code> — so don't run those.</dd>
+      </div>
+      <div>
+        <dt>Node.js</dt>
+        <dd>The engine that runs JavaScript programs on a computer instead of in a web browser. Our app is a JavaScript program.</dd>
+      </div>
+      <div>
+        <dt>npm</dt>
+        <dd>Comes with Node. It downloads the ready-made pieces our app depends on. <code>npm install</code> fetches them; <code>npm run something</code> runs one of our commands.</dd>
+      </div>
+      <div>
+        <dt>API token</dt>
+        <dd>A long password that lets a program log into monday as you. Anyone holding it can read everything you can read.</dd>
+      </div>
+      <div>
+        <dt>Repo / branch</dt>
+        <dd>A repo is a project folder with full history. A branch is a parallel version of it — ours is <code>claude/vendor-reports-app-design-xs0s9w</code>, so this work stays separate from your pick'em app.</dd>
+      </div>
+      <div>
+        <dt>Dry run</dt>
+        <dd>Doing everything except the irreversible part. Our dry run builds every report but has no ability to send one.</dd>
+      </div>
+      <div>
+        <dt>monday-code</dt>
+        <dd>monday's own hosting. You give them your code, they run it on their servers, and it can wake up on a schedule without anyone's computer being on.</dd>
+      </div>
+      <div>
+        <dt>Cron</dt>
+        <dd>A schedule written in a compact format. <code>0 20 * * 5</code> means "at 20:00, every Friday". It runs on UTC time, which is why it drifts an hour when daylight saving changes.</dd>
+      </div>
+      <div>
+        <dt>SPF / DKIM</dt>
+        <dd>Two settings you add to a domain's DNS that prove your emails are really from you. Without them, mail providers assume you're spam.</dd>
+      </div>
+      <div>
+        <dt>Secret</dt>
+        <dd>A password stored on the server rather than written in the code — so it never ends up on GitHub. Your monday token and email API key both live here.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <footer>
+    <span>Dragon Transport · Vendor Reports</span>
+    <span>Next steps · 20 Aug 2026</span>
+  </footer>
+
+</div>
