@@ -1,5 +1,6 @@
 // monday sends the frontend a short-lived session token; the backend verifies
-// it with the app's signing secret before serving anything.
+// it with the app's CLIENT SECRET before serving anything. (Not the Signing
+// Secret — session tokens are signed with the client secret.)
 import jwt from 'jsonwebtoken';
 import { config } from './config.js';
 

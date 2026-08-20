@@ -15,6 +15,9 @@ export function readConfig(key, fallback = undefined) {
 
 export const config = {
   get mondayToken() { return readConfig('MONDAY_API_TOKEN'); },
+  // monday signs session tokens with the app's CLIENT SECRET (not the
+  // "Signing Secret" — that one is for integration webhooks). The env key name
+  // is historical; the value stored in it must be the Client Secret.
   get clientSecret() { return readConfig('MONDAY_SIGNING_SECRET'); },
   get completedGraceDays() { return Number(readConfig('COMPLETED_GRACE_DAYS', '14')); },
   get port() { return Number(readConfig('PORT', '8080')); },

@@ -183,3 +183,20 @@ npm run demo    # http://localhost:8080, real board snapshot, no token needed
 
 `npm run demo` serves the real frontend against a recorded snapshot of the
 boards. It's the fastest way to see a change without deploying.
+
+
+## Corrections learned from the first real deploy (2026-08-20)
+
+1. **The session-token secret is the CLIENT SECRET.** Set
+   `mapps code:secret -m set -k MONDAY_SIGNING_SECRET -v <Client Secret>` using the
+   **Client Secret** from General settings — not the field literally named
+   "Signing Secret". monday signs `monday.get('sessionToken')` JWTs with the
+   client secret.
+2. **The Object feature has TWO places to configure.** Feature Details →
+   Deployment (pick *Server-side code (monday code)*) AND the **View Setup**
+   tab, where Source = Custom URL must contain the full deployment URL. An
+   empty View Setup renders as a blank page in the workspace.
+3. **A workspace object added before the view was configured stays blank.**
+   Delete the object from the left pane and re-add it after View Setup is saved.
+4. **Secret changes may need a restart** — re-run `mapps code:push` if a new
+   secret doesn't take effect.
