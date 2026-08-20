@@ -229,7 +229,7 @@
     const period = DATA.ranges.find((r) => r.key === range);
     $('sendTitle').textContent = `Send — ${current.name}`;
     $('sendSub').textContent = `${period.range}. The email is rebuilt from the boards on send; unscoped homes are left out.`;
-    $('sendTo').value = lastRecipients[current.id] || '';
+    $('sendTo').value = lastRecipients[current.id] || (current.recipients || []).join('; ');
     msg('sendMsg', '');
     $('sendOverlay').classList.add('open');
     $('sendTo').focus();
@@ -251,6 +251,65 @@
       setTimeout(() => $('sendOverlay').classList.remove('open'), 1800);
     } catch (err) { msg('sendMsg', err.message, 'err'); }
     btn.disabled = false;
+  };
+
+  // ---- send all -----------------------------------------------------------
+  function sendAllRows() {
+    return DATA.vendors.map((v) => {
+      const report = v.reports[range];
+      const sendable = report.jobs.some((j) => j.state !== 'unscoped');
+      const hasEmail = (v.recipients || []).length > 0;
+      return { v, sendable, hasEmail, on: sendable && hasEmail };
+    });
+  }
+
+  function renderSendAll(rows) {
+    $('sendAllList').innerHTML = rows.map(({ v, sendable, hasEmail, on }) => `
+      <label class="sa-row ${sendable && hasEmail ? '' : 'off'}">
+        <input type="checkbox" data-id="${v.id}" ${on ? 'checked' : ''} ${sendable && hasEmail ? '' : 'disabled'}>
+        <span class="sa-name">${esc(v.name)}</span>
+        <span class="sa-homes">${plural(v.homes, 'home')}</span>
+        <span class="sa-mail ${hasEmail ? '' : 'missing'}">${
+          hasEmail ? esc(v.recipients.join('; '))
+          : !sendable ? 'nothing to report this period'
+          : 'no Status Update Email on the Vendors board'}</span>
+        <span class="sa-result" data-result="${v.id}"></span>
+      </label>`).join('');
+  }
+
+  $('sendAllBtn').onclick = () => {
+    const period = DATA.ranges.find((r) => r.key === range);
+    $('sendAllSub').textContent = `${period.range}. Everyone below gets their own report, sent to the address on the Vendors board. Untick anyone who should sit this one out.`;
+    renderSendAll(sendAllRows());
+    msg('sendAllMsg', '');
+    $('sendAllGo').disabled = false;
+    $('sendAllOverlay').classList.add('open');
+  };
+  $('sendAllClose').onclick = () => $('sendAllOverlay').classList.remove('open');
+
+  $('sendAllGo').onclick = async () => {
+    const ids = [...$('sendAllList').querySelectorAll('input:checked')].map((el) => el.dataset.id);
+    if (!ids.length) { msg('sendAllMsg', 'Nobody is selected.', 'err'); return; }
+    $('sendAllGo').disabled = true;
+    msg('sendAllMsg', `Sending ${ids.length} report${ids.length === 1 ? '' : 's'}… this can take a minute.`);
+    try {
+      const out = await api('/api/send-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periodKey: range, vendorIds: ids }),
+      });
+      for (const r of out.results) {
+        const el = $('sendAllList').querySelector(`[data-result="${r.vendorId}"]`);
+        if (!el) continue;
+        el.className = `sa-result ${r.status}`;
+        el.textContent = r.status === 'sent' ? `sent to ${r.to.join('; ')}` : `${r.status}: ${r.error}`;
+      }
+      const t = out.tally;
+      msg('sendAllMsg', `Done — ${t.sent || 0} sent${t.skipped ? `, ${t.skipped} skipped` : ''}${t.failed ? `, ${t.failed} FAILED` : ''}, from ${out.from}.`, t.failed ? 'err' : 'ok');
+    } catch (err) {
+      msg('sendAllMsg', err.message, 'err');
+      $('sendAllGo').disabled = false;
+    }
   };
 
   $('range').onchange = (e) => { range = e.target.value; renderAll(); };

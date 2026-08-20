@@ -9,6 +9,10 @@ import { PHASES, BOARDS, TASK_COLUMNS } from './phases.js';
 const API = 'https://api.monday.com/v2';
 const API_VERSION = '2024-10';
 
+export const VENDOR_COLUMNS = {
+  statusUpdateEmail: 'email_mm6dv20g', // "Status Update Email" on Vendors
+};
+
 export const JOB_COLUMNS = {
   address: 'text_mm4bqpy1',
   vendor: 'deal_contact',   // "Bill to" -> Vendors
@@ -43,7 +47,8 @@ const COLUMN_FRAGMENT = `
   ... on BoardRelationValue { linked_item_ids }
   ... on TimelineValue { from to }
   ... on DateValue { date }
-  ... on StatusValue { label }`;
+  ... on StatusValue { label }
+  ... on EmailValue { email }`;
 
 /** Page through a board, returning items with the requested columns. */
 export async function fetchItems({ boardId, columnIds, groupIds, token, limit = 200 }) {
@@ -175,9 +180,21 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
     }];
   }));
 
-  const rawVendors = await fetchItemsByIds({ ids: [...vendorIds], columnIds: [], token });
+  const rawVendors = await fetchItemsByIds({
+    ids: [...vendorIds],
+    columnIds: [VENDOR_COLUMNS.statusUpdateEmail],
+    token,
+  });
 
-  const vendorsById = new Map(rawVendors.map((raw) => [raw.id, { id: raw.id, name: raw.name }]));
+  const vendorsById = new Map(rawVendors.map((raw) => {
+    const cols = byId(raw);
+    const emailCol = cols[VENDOR_COLUMNS.statusUpdateEmail];
+    return [raw.id, {
+      id: raw.id,
+      name: raw.name,
+      recipients: splitRecipients(emailCol?.email || emailCol?.text || ''),
+    }];
+  }));
 
   const jobsByVendorId = new Map();
   const orphanJobs = [];
@@ -190,3 +207,10 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
   return { vendorsById, jobsByVendorId, tasksById, orphanJobs, totalJobs: jobs.length };
 }
 
+
+export function splitRecipients(text) {
+  return [...new Set(String(text || '')
+    .split(/[;,]/)
+    .map((s) => s.trim())
+    .filter((s) => s.includes('@')))];
+}

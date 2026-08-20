@@ -81,6 +81,55 @@ api.post('/settings/test', async (_req, res, next) => {
   }
 });
 
+// ---- send many vendors in one pass -----------------------------------------
+// Recipients come from the board's Status Update Email column, resolved on the
+// server — the browser only says WHO, never WHERE. Vendors are processed one
+// at a time and each outcome is reported, so one bad address cannot stop the
+// batch and nothing fails silently.
+
+api.post('/send-all', async (req, res, next) => {
+  try {
+    const { periodKey, vendorIds } = req.body || {};
+    if (!Array.isArray(vendorIds) || !vendorIds.length) {
+      return res.status(400).json({ error: 'No vendors selected.' });
+    }
+
+    const settings = await getEmailSettings();
+    if (!settings) return res.status(400).json({ error: 'Connect a sending account in Settings first.' });
+
+    const data = await centre();
+    const period = data.ranges.find((r) => r.key === periodKey);
+    if (!period) return res.status(400).json({ error: 'Unknown report period.' });
+
+    const results = [];
+    for (const id of vendorIds.map(String)) {
+      const vendor = data.vendors.find((v) => String(v.id) === id);
+      if (!vendor) { results.push({ vendorId: id, name: id, status: 'failed', error: 'vendor not found' }); continue; }
+      const report = vendor.reports?.[periodKey];
+      const sendable = report && report.jobs.some((j) => j.state !== 'unscoped');
+      if (!sendable) { results.push({ vendorId: id, name: vendor.name, status: 'skipped', error: 'nothing to report' }); continue; }
+      if (!vendor.recipients?.length) { results.push({ vendorId: id, name: vendor.name, status: 'skipped', error: 'no Status Update Email on the Vendors board' }); continue; }
+      try {
+        await sendEmail({
+          settings,
+          to: vendor.recipients,
+          subject: renderSubject(report, period.range),
+          html: renderEmail(report, period.range, { officePhone: config.officePhone }),
+        });
+        results.push({ vendorId: id, name: vendor.name, status: 'sent', to: vendor.recipients });
+      } catch (err) {
+        results.push({ vendorId: id, name: vendor.name, status: 'failed', error: err.message });
+      }
+    }
+
+    const tally = results.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), {});
+    console.log('send-all:', JSON.stringify(tally));
+    res.json({ ok: true, from: settings.address, period: period.range, tally, results });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ---- send one vendor's report ---------------------------------------------
 // Human-triggered from the report screen. The server re-renders from its own
 // data (never trusts HTML from the browser) and sends via the stored account.
