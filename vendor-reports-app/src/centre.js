@@ -63,6 +63,7 @@ export async function loadCentre({ now = new Date() } = {}) {
     vendors.push({
       id: vendor.id,
       name: vendor.name,
+      recipients: vendor.recipients || [],
       homes: live.activeHomes,
       counts: live.counts,
       lastActivity: live.lastActivity,
