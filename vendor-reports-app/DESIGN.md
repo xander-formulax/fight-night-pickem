@@ -2,69 +2,59 @@
 
 **Client:** Dragon Transport (monday account `dragontransportss-team`)
 **Workspace:** Dragon Transport (`13706443`)
-**Goal:** Automatically send each vendor a weekly progress report on their homes, so they stop calling for status.
+**Goal:** A reporting centre where the office can see any vendor's activity at a glance and
+export a progress report to send them manually — so vendors stop calling for status.
 
 ---
 
 ## 1. Recommendation in one paragraph
 
 A **monday-code hosted app** — Node backend + React frontend — surfaced in the workspace as a
-**Custom Object** (full-page, left-pane, not tied to any board), same deployment shape as the
-QBO job sync project. A **monday-code scheduled cron job** fires every Friday, builds each
-vendor's report from **structured column values only**, renders it through a **fixed HTML
-template**, and emails it via a transactional email provider. No AI, no free-text, no Updates,
-no notes. The report is a pure function of board data.
-
----
+**Custom Object**, the same deployment shape as the QBO job sync project. It is a **reporting
+centre**: pick a vendor, see every home they have with us at a glance, and press **Create
+report** to produce a progress report for a chosen date range. The office **exports it as a PDF
+or copies it into an email and sends it themselves**. No automatic sending, no email provider,
+no scheduler, no sending domain. The report is a fixed template over **column values only** —
+no AI, no Updates, no notes.
 
 ## 2. Architecture
 
 ```
-                    monday-code (Node, 512 MiB, 1 vCPU)
-   ┌──────────────────────────────────────────────────────────┐
-   │                                                          │
-   │  POST /mndy-cronjob/weekly-reports   ← monday scheduler   │
-   │         │                              (cron, UTC)        │
-   │         ▼                                                 │
-   │   buildWeek(vendor)  ── monday GraphQL ──▶ Vendors/Jobs/  │
-   │         │                                   Tasks boards  │
-   │         ▼                                                 │
-   │   renderTemplate()   ── fixed HTML, zero AI               │
-   │         │                                                 │
-   │         ▼                                                 │
-   │   sendEmail()        ── outbound (static IP) ──▶ Postmark │
-   │         │                                                 │
-   │         ▼                                                 │
-   │   Storage.set()      ── send history + idempotency        │
-   │                                                          │
-   │  GET  /api/vendors            ┐                          │
-   │  GET  /api/report/:id         ├─ Custom Object UI (React) │
-   │  POST /api/report/:id/send    ┘   session-token auth      │
-   └──────────────────────────────────────────────────────────┘
+              monday-code (Node, 512 MiB, 1 vCPU)
+   ┌──────────────────────────────────────────────────┐
+   │  GET /api/vendors        ┐                       │
+   │  GET /api/vendor/:id     ├─ Custom Object UI     │
+   │  GET /api/report/:id     ┘   (React, in monday)  │
+   │        │                                         │
+   │        ▼                                         │
+   │   loadReportData()  ── monday GraphQL ──▶ Jobs   │
+   │        │                                  Tasks  │
+   │        ▼                                 Vendors │
+   │   buildReport()     ── pure function, zero AI    │
+   └──────────────────────────────────────────────────┘
+                          │
+                          ▼
+              Browser renders · user presses
+              Export as PDF (print) or Copy for email
 ```
 
 ### Why this shape
 
 | Decision | Rationale |
 | --- | --- |
-| **monday-code** | Same stack and deploy path as QBO job sync. `mapps code:push`, secrets, storage, logging and monitoring all already familiar. |
-| **Custom Object** app feature | Renders full-screen from the left pane, independent of any board — the "its own thing in the workspace" feel. (Board view would trap it inside Vendors; dashboard widget is too small.) |
-| **monday-code scheduler** | Native cron. Up to 5 jobs per region. This is what makes the send genuinely unattended — the app does not need to be open. |
-| **External email provider** | Postmark/SendGrid/Resend. Real HTML email with real deliverability. Avoids monday's 256 KB email cap and its File-column-links-that-external-recipients-cannot-open problem. |
-| **Storage for history** | Send history lives in monday-code Storage and is shown in the app UI. No new boards, and nothing written to Updates. |
+| **monday-code** | Same stack and deploy path as QBO job sync. `mapps code:push`, secrets, logging already familiar. |
+| **Custom Object** app feature | Renders full-screen from the left pane, independent of any board — a reporting centre, not a board tab. |
+| **Export in the browser, not on the server** | `window.print()` → "Save as PDF" needs no library. Server-side PDF (headless Chrome) would not fit comfortably in 512 MiB, and would add a dependency for something the browser already does well. |
+| **Copy for email** | Puts the formatted report on the clipboard as rich text, ready to paste into Gmail or Outlook. This is the fastest manual-send path and needs no email infrastructure at all. |
+| **No stored state** | Nothing is scheduled, nothing is sent, so there is nothing to record. No Storage, no idempotency keys, no send log. |
 
-### monday-code limits that matter here
+### What the rescope removed
 
-- 1 vCPU / 512 MiB RAM, 300 s request timeout, max 10 instances per region.
-- Scheduler: **5 jobs per region**; cron expressions are **UTC**.
-- Storage: 256-char keys, 6 MB per key, 12 req/s per token.
-- Secrets are **write-only** — you cannot read them back after creation.
-- Outbound traffic leaves from a **static IP range**, so the email provider can allowlist it.
-
-At 17 vendors and ~140 jobs, a full weekly run is a handful of GraphQL calls and well inside
-one request timeout. No queue needed.
-
----
+Dropping automatic sending removed the entire delivery half of the system: the cron scheduler,
+the transactional email provider, the sending domain with SPF/DKIM (which was the longest-lead
+item in the whole project), idempotency keying, the send log, the paused/enabled flag, and the
+readiness gate that existed to stop a robot mailing something misleading. A human now looks at
+every report before it goes out, which is a stronger guarantee than any of it.
 
 ## 3. No AI. No Updates. No notes.
 
@@ -190,6 +180,31 @@ what the vendor most wants to see, so it leads; unscheduled work sinks to the bo
 If the list is empty the section is replaced by exactly one templated line:
 `All scheduled work on this home is complete.`
 
+### Phases that link several tasks
+
+A phase normally maps to one task. Some map to several — Liliana Camarillo González's
+Foundation links *Foundation Prep+Forms*, *Pour concrete* and *Remove Forms+Backfill*. Rules:
+
+- The phase counts as **one** step in the progress bar, complete only when **every** linked
+  task is complete.
+- A single-task phase is labelled with the **phase name**. A multi-task phase lists **each task
+  under its own name**, with the trailing `" for {home}"` stripped, since those are real steps
+  the customer can follow.
+
+### Home states
+
+The centre needs to tell four situations apart. Resolved in this order:
+
+| State | Meaning |
+| --- | --- |
+| `unscoped` | No phase is marked Yes. Nothing truthful to report — excluded from the report, shown in the centre. |
+| `complete` | Every in-scope phase is done. |
+| `stalled` | Nothing running, nothing booked, and nothing finished in 21 days. **This is the home the vendor phones about.** |
+| `active` | Everything else. |
+
+`stalled` is shown in the centre only. It is an internal prompt to go do something, not a
+sentence to put in front of a customer.
+
 ### Header counts
 `{N} active homes · {N} tasks completed this week` — both computed, both plain integers.
 
@@ -201,93 +216,77 @@ or per-job prose anywhere.
 
 ## 6. What changes in monday
 
-**No new boards.** Three columns on **Vendors**:
+**Nothing.** No new boards and no new columns.
 
-| Column | Type | Purpose |
+The three Vendors columns the earlier design needed — Report Recipients, Weekly Report,
+Last Report Sent — only existed to serve automatic sending. With a person exporting and
+sending from their own mail client, none of them are required.
+
+## 7. The reporting centre
+
+One screen, three states.
+
+**Vendor rail.** Every vendor with active jobs, with a dot against any that has a home needing
+attention. Sorted by name.
+
+**Vendor overview.** The summary before the detail:
+
+- Four counts — homes, tasks finished this period, stalled, not scoped yet.
+- A row per home, sorted **stalled → not scoped → on track → complete**, so the ones that
+  generate phone calls sit at the top. Each row carries a state stripe, a progress meter,
+  when work last finished, and what is booked next.
+- Clicking a row expands it to the same two lists the report uses.
+
+**Report.** Pick a period, press Create report, get the exact document the vendor will see.
+Two ways out: **Export as PDF** (the browser's print dialogue) and **Copy for email** (rich
+text on the clipboard). Homes in the `unscoped` state are **left out of the report** — a home
+with no phases marked Yet has nothing truthful to say — while still showing in the centre so
+the office can fix it.
+
+## 8. Data quality — what limits the output
+
+Measured against live account data on 2026-08-20. None of this blocks building or using the
+centre; it limits how good the reports are. Since a person reviews every report before sending,
+none of it can any longer cause a customer to receive something wrong.
+
+| # | Finding | Effect |
 | --- | --- | --- |
-| Report Recipients | text | Semicolon-separated addresses. Distinct from billing email, which is usually accounts-payable. |
-| Weekly Report | status | `On` / `Paused` — which vendors are in the run. |
-| Last Report Sent | date | Written back by the cron job so the office can see it without opening the app. |
+| 1 | **~70 of the active jobs have no "Bill to" vendor** | Those homes appear under no vendor in the centre. The single biggest limit on usefulness. |
+| 2 | **Duplicate vendor records** — Solitaire four ways, Palm Harbor three, Titan several | One dealership's homes split across several entries in the vendor rail. |
+| 3 | **Some jobs have no phase columns set at all** — Michael Casares, Shannon R Cummins, Jesus Munoz Ribota | They render as `unscoped`: visible in the centre, excluded from reports. |
+| 4 | **Only 112 of 576 tasks have a Schedule** | Most "Still to do" lines read `Not yet scheduled`, which is the weakest version of the report. |
+| 5 | **Two `*Site Checks` relation columns on Jobs** (`board_relation_mm2q8sc1`, `board_relation_mm33z95n`) | Site Check double-counts. Delete one. |
+| 6 | **Only 24 of 576 tasks have Pictures** | Not enough to build on. Out of scope. |
 
----
+The centre surfaces #1–#3 as it goes: a vendor with an unscoped home shows an amber count, and
+jobs with no vendor simply never appear — so the office can work the list down over time
+rather than treating it as a project.
 
-## 7. The app UI (Custom Object)
+## 9. Export
 
-The scheduled job does the sending; the UI exists for oversight, not for operating the send.
+`window.print()` with a print stylesheet that hides the app chrome and prints only the report.
+The user picks "Save as PDF" in their own print dialogue.
 
-1. **This week** — every vendor in the run, its computed report, and send state (queued / sent / failed / paused).
-2. **Preview** — the exact HTML for any vendor and week, before or after it goes out.
-3. **Readiness** — the live worklist from §8: jobs with no vendor, vendors with no email, duplicate vendors.
-4. **History** — what was sent, when, to whom, read from Storage.
-5. **Send now** / **Skip this week** — manual overrides on a single vendor.
-
----
-
-## 8. Blockers — fix these or the reports will be wrong
-
-Measured against live data on 2026-08-20.
-
-| # | Finding | Impact | Fix |
-| --- | --- | --- | --- |
-| 1 | **80 of 141 jobs have no "Bill to" vendor** (61 linked) | Those homes appear in **no** report. A vendor gets a report missing half their homes — worse than no report. | Backfill `deal_contact`. Highest priority. |
-| 2 | **Duplicate vendor records** — Solitaire as `Soltaire Homes` / `Solitaire Homes Hobbs` / `Solitaire  Homes Of Hobbs` / `Solitare Roswell`; Titan as `Titan Midland` and `Titan Factory Direct Midland`; Palm Harbor three ways | One dealership gets two partial reports, or the record holding the jobs has no email while the one with the email has no jobs. | Merge to one record per dealership location. |
-| 3 | **6 of the 17 active vendors have no email** — including Titan Midland (14 jobs) and Palm Harbor Homes (7 jobs) | Cannot send at all. | Collect addresses into Report Recipients. |
-| 4 | **Only 112 of 576 tasks have a Schedule** | Most "Still to do" lines will read `Not yet scheduled`, which is the weakest version of the report. | Crews set Schedule when work is booked. |
-| 5 | **Only 24 of 576 tasks have Pictures** | Not enough to build on. | Out of scope for v1. |
-
-The **Readiness tab** surfaces #1–#3 as a live worklist so cleanup is a weekly habit rather
-than a one-time project that decays by month two. The cron job **refuses to send** to any
-vendor failing readiness, and lists it as skipped rather than sending something misleading.
-
----
-
-## 9. Scheduling detail
-
-Register with the CLI:
-
-```bash
-mapps scheduler:create -a APP_ID \
-  -s "0 20 * * 5" \
-  -u "weekly-reports" \
-  -n "weekly-vendor-reports" \
-  -z us -r 3 -t 300
-```
-
-Cron is **UTC**. `0 20 * * 5` is Friday 3:00 PM Central during CDT and 2:00 PM during CST —
-the schedule does not follow US daylight saving. Either accept the one-hour winter shift or
-have the handler no-op unless local time is within the intended window.
-
-The handler must be **idempotent**: key each send `{vendorId}:{weekStart}` in Storage and
-skip anything already sent, so a scheduler retry cannot double-send to a customer.
-
-Test with `mapps scheduler:run` before putting a real cron on it.
-
----
+"Copy for email" writes both `text/html` and `text/plain` to the clipboard via the async
+Clipboard API, falling back to selecting the report node so Ctrl/Cmd+C works if the browser
+refuses programmatic clipboard writes.
 
 ## 10. Build path
 
-1. Clean blockers #2 and #3 — dedupe vendors, collect emails.
-2. Delete the duplicate `*Site Checks` relation column on Jobs.
-3. Add the three Vendors columns from §6.
-4. Scaffold the monday-code app; register the Custom Object feature; `mapps code:push`.
-5. Build `buildWeek()` + the HTML template. Golden-file test it: fixed board fixture in,
-   byte-identical HTML out.
-6. Wire the email provider; store the API key with `mapps code:secret`.
-7. Dry run: generate all 17, send only to `xander@formulaxconsulting.com`.
-8. Register the cron far in the future, verify with `mapps scheduler:run`, then set the real schedule.
-9. Pilot two vendors for two weeks, then turn on the rest.
-10. Backfill blocker #1 through the Readiness tab as an ongoing habit.
-
----
+1. Delete the duplicate `*Site Checks` relation column on Jobs.
+2. Scaffold the monday-code app; register the Custom Object feature; `mapps code:push`.
+3. Build the React centre against the existing endpoints. `buildReport()` and the template are
+   already written and tested.
+4. Point it at live data, click through every vendor, and fix what reads wrong.
+5. Use it. Data cleanup (§8) improves the output continuously and blocks nothing.
 
 ## 11. Open decisions
 
-- **Send time.** Friday afternoon (week just closed, next week visible) vs Monday morning.
-  Friday fits the reassurance goal better.
-- **Email provider.** Postmark has the best transactional deliverability; Resend is the
-  simplest API. Either works — needs a decision so the domain's SPF/DKIM can be set up early.
-- **Sending domain.** Sending as `dragon.transports@gmail.com` will hurt deliverability and
-  land in spam at volume. Recommend a real domain with SPF/DKIM before the pilot.
-- **Recently completed homes.** Recommend including for 14 days after the Job Finish Date.
-- **Terminology.** The board says "Vendor." In the email body, use the dealership's own name
-  and no category noun at all.
+- **Report periods offered.** Currently this week / last week / last 30 days. A custom range
+  picker is easy to add if the office wants one.
+- **Which homes appear.** Active Jobs, plus homes completed in the last 14 days so a finished
+  home visibly lands rather than silently disappearing.
+- **Stalled threshold.** 21 days with nothing finished, nothing running and nothing booked.
+  Worth tuning once the office sees which homes it flags.
+- **Terminology.** The board says "Vendor". In the report itself, use the dealership's own
+  name and no category noun at all.

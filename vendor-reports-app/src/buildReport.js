@@ -2,20 +2,36 @@
 //
 // This is a pure function: board state in, report object out. No network, no
 // clock, no randomness, no model. The same input always produces the same
-// output, which is what makes the golden-file test in test/ meaningful.
+// output, which is what makes the tests in test/ meaningful.
 //
 // Nothing here reads Updates or notes. Those are internal.
 
 import { PHASES, COMPLETE_STATUSES } from './phases.js';
-import { formatDay, inWeek } from './week.js';
+import { formatDay, inWeek, addDays } from './week.js';
 
-// Resolved in order — first match wins.
-function pendingSuffix(task) {
-  if (task?.status === 'Working on it') return { label: 'In progress', tone: 'active' };
-  if (task?.status === 'Waiting') return { label: 'On hold', tone: 'hold' };
-  if (task?.scheduleStart) {
-    return { label: `Scheduled ${formatDay(task.scheduleStart)}`, tone: 'scheduled', date: task.scheduleStart };
-  }
+// A home with nothing finished and nothing booked for this long is the one a
+// vendor phones about. Surfaced in the reporting centre, never in the report.
+const STALE_AFTER_DAYS = 21;
+
+const isComplete = (task) => COMPLETE_STATUSES.has(task?.status);
+const min = (dates) => dates.filter(Boolean).sort()[0] || null;
+const max = (dates) => dates.filter(Boolean).sort().at(-1) || null;
+
+// Tasks are named "Pad for William Pierce" on the board. Inside that home's own
+// section the suffix is noise, so drop it.
+function taskLabel(task, jobName) {
+  const name = String(task?.name || '').trim();
+  const suffix = ` for ${jobName}`;
+  return name.endsWith(suffix) ? name.slice(0, -suffix.length).trim() || name : name;
+}
+
+// Resolved in order — first match wins — across every incomplete task in a phase.
+function pendingSuffix(tasks) {
+  const open = tasks.filter((t) => !isComplete(t));
+  if (open.some((t) => t.status === 'Working on it')) return { label: 'In progress', tone: 'active' };
+  if (open.some((t) => t.status === 'Waiting')) return { label: 'On hold', tone: 'hold' };
+  const next = min(open.map((t) => t.scheduleStart));
+  if (next) return { label: `Scheduled ${formatDay(next)}`, tone: 'scheduled', date: next };
   return { label: 'Not yet scheduled', tone: 'unscheduled' };
 }
 
@@ -30,57 +46,90 @@ function byUrgency(a, b) {
 }
 
 /**
- * Build one job's section.
+ * Build one home's section.
  *
- * The phase name — not the task name — is the customer-facing label. It is
- * always present (even when no task exists yet) and avoids leaking whatever
- * internal naming convention the office uses on the Tasks board.
+ * A phase normally maps to one task and is labelled with the phase name, which
+ * is always present even where no task exists yet. Where a phase links several
+ * tasks (Foundation = prep, pour, backfill) each task is listed under its own
+ * name, since those are real steps the customer can follow.
  */
-export function buildJob(job, tasksById, week) {
+export function buildJob(job, tasksById, week, today = week.end) {
   const inScope = PHASES
-    .map((phase, order) => ({ phase, order, task: tasksById.get(job.taskIdByPhase?.[phase.name]) }))
+    .map((phase, order) => ({
+      phase,
+      order,
+      tasks: (job.taskIdsByPhase?.[phase.name] || []).map((id) => tasksById.get(id)).filter(Boolean),
+    }))
     .filter(({ phase }) => job.scope?.[phase.scope] === 'Yes');
 
-  const done = inScope.filter(({ task }) => COMPLETE_STATUSES.has(task?.status));
+  const done = inScope.filter(({ tasks }) => tasks.length > 0 && tasks.every(isComplete));
 
-  const completed = done
-    .filter(({ task }) => inWeek(task.finishedDate, week))
-    .map(({ phase, task }) => ({ name: phase.name, date: task.finishedDate, dateLabel: formatDay(task.finishedDate) }))
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const completed = [];
+  for (const { phase, tasks } of done) {
+    const thisWeek = tasks.filter((t) => inWeek(t.finishedDate, week));
+    for (const task of thisWeek) {
+      completed.push({
+        name: tasks.length > 1 ? taskLabel(task, job.name) : phase.name,
+        date: task.finishedDate,
+        dateLabel: formatDay(task.finishedDate),
+      });
+    }
+  }
+  completed.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name)));
 
   const pending = inScope
-    .filter(({ task }) => !COMPLETE_STATUSES.has(task?.status))
-    .map(({ phase, order, task }) => {
-      const suffix = pendingSuffix(task);
+    .filter(({ tasks }) => !(tasks.length > 0 && tasks.every(isComplete)))
+    .map(({ phase, order, tasks }) => {
+      const suffix = pendingSuffix(tasks);
       return { name: phase.name, order, date: suffix.date, status: suffix.label, tone: suffix.tone };
     })
     .sort(byUrgency);
 
   const total = inScope.length;
+  const allTasks = inScope.flatMap(({ tasks }) => tasks);
+  const lastActivity = max(allTasks.map((t) => t.finishedDate));
+  const nextScheduled = min(pending.map((p) => p.date));
+
+  // Three states the reporting centre needs to tell apart, in priority order.
+  let state;
+  if (total === 0) state = 'unscoped';
+  else if (pending.length === 0) state = 'complete';
+  else if (!nextScheduled && !pending.some((p) => p.tone === 'active')
+           && (!lastActivity || lastActivity < addDays(today, -STALE_AFTER_DAYS))) state = 'stalled';
+  else state = 'active';
+
   return {
     id: job.id,
     name: job.name,
     address: job.address || '',
+    state,
     progress: { done: done.length, total, pct: total ? Math.round((done.length / total) * 100) : 0 },
     completed,
     pending,
+    lastActivity,
+    nextScheduled,
   };
 }
 
 /**
- * Build a vendor's whole weekly report.
+ * Build a vendor's whole report.
  * `jobs` should already be filtered to this vendor.
  */
-export function buildReport({ vendor, jobs, tasksById, week }) {
+export function buildReport({ vendor, jobs, tasksById, week, today = week.end }) {
   const sections = jobs
-    .map((job) => buildJob(job, tasksById, week))
+    .map((job) => buildJob(job, tasksById, week, today))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  const counts = sections.reduce((acc, j) => ({ ...acc, [j.state]: (acc[j.state] || 0) + 1 }), {});
 
   return {
     vendor: { id: vendor.id, name: vendor.name },
     week,
     activeHomes: sections.length,
     completedCount: sections.reduce((n, j) => n + j.completed.length, 0),
+    counts,
+    nextScheduled: min(sections.map((j) => j.nextScheduled)),
+    lastActivity: max(sections.map((j) => j.lastActivity)),
     jobs: sections,
   };
 }

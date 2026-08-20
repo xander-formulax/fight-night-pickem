@@ -1,0 +1,142 @@
+// A snapshot of real Dragon Transport board data (3 vendors, 14 homes), taken
+// 2026-08-20. Used to drive the reporting-centre prototype without a token.
+import { PHASES } from '../src/phases.js';
+
+const K = { siteCheck:'Site Check', pad:'Pad', foundation:'Foundation', bw:'Break and Wrap',
+  delivery:'Delivery', tie:'Tie Downs', setup:'Set Up', steps:'Steps', skirt:'Skirting',
+  eserv:'Electric Service', ehook:'Electric Hookup', well:'Water Well', whook:'Water Hookup',
+  sinst:'Septic Install', shook:'Septic Hookup', trim:'Trim Out' };
+const byName = Object.fromEntries(PHASES.map((p) => [p.name, p]));
+const scope = (keys) => Object.fromEntries(keys.map((k) => [byName[K[k]].scope, 'Yes']));
+const rel = (obj) => Object.fromEntries(Object.entries(obj).map(([k, v]) => [K[k], [].concat(v)]));
+
+const j = (id, name, address, keys, tasks) =>
+  ({ id, name, address, scope: scope(keys), taskIdsByPhase: rel(tasks) });
+
+export const vendors = [
+  { id:'11884347330', name:'Titan Midland' },
+  { id:'12246117985', name:'Palm Harbor Homes Hobbs / Seminole' },
+  { id:'12246182018', name:'Solitaire Homes Hobbs' },
+];
+
+export const jobsByVendor = {
+  '11884347330': [
+    j('11903188051','William Pierce','221 S Robertson Rd Loving, NM',
+      ['pad','foundation','siteCheck','setup','skirt'],
+      { foundation:'11905040706', skirt:'11904953566', pad:'11903322673',
+        siteCheck:'11906715355', setup:'12237993627' }),
+    j('11903188053','Robert Gonzales','2811 CR 349 Denver City, TX 79323',
+      ['pad','siteCheck','delivery','bw','setup','skirt','steps'],
+      { bw:'11906834935', steps:'11903338475', skirt:'11906943139', pad:'11903318125',
+        siteCheck:'11904965362', delivery:'11906837297', setup:'11906837005' }),
+    j('12425610879','Keyla Duran','2435 PR 200-G Seminole TX 79360',
+      ['ehook','well','whook','sinst','shook'],
+      { ehook:'12455845406', shook:'12455770907', sinst:'12455828454',
+        whook:'12455843740', well:'12455770910' }),
+    j('12592634253','Andrea Rojas','6417 S CR 1035 Stanton Tx',
+      ['pad','setup','steps'],
+      { steps:'12592642092', pad:'12592663417', setup:'12592635439' }),
+    j('12825716587','Jacinto Menchava Segovia','183 CR 109 Seminole, TX 79360',
+      ['pad','siteCheck','delivery','bw','setup','steps'],
+      { bw:'12825742786', steps:'12825793917', pad:'12825756683',
+        siteCheck:'12825767058', delivery:'12825754704', setup:'12825753977' }),
+  ],
+  '12246117985': [
+    j('12676321308','Ulises Jaquez Frias','358 Fm 3306, Seminole Tx, 79360',
+      ['pad','siteCheck','setup','well','sinst','steps'],
+      { steps:'12679232508', sinst:'12679199776', pad:'12679190904',
+        siteCheck:'12679200019', setup:'12679232757', well:'12679237839' }),
+    j('12685498607','Hugo Ortiz','317 S East First Street Loving NM',
+      ['pad','siteCheck','setup'],
+      { pad:'12799454157', siteCheck:'12685584876', setup:'12685593847' }),
+    j('12799397075','Liliana Camarillo González','1779 Pecos Hwy, Loving Nm., 88256',
+      ['foundation','setup','eserv','whook','shook','skirt'],
+      { foundation:['12799475211','12799475544','12799445373'], eserv:'12807454012',
+        skirt:'12807509868', shook:'12807444581', whook:'12807500666', setup:'12799476949' }),
+    j('12825819379','Jubencio Castillo','3235 W Trevino Rd. Hobbs Nm., 88240',
+      ['siteCheck','setup','well','whook','sinst','shook'],
+      { shook:'12825965815', sinst:'12825967674', whook:'12825967218',
+        siteCheck:'12825921071', setup:'12825927518', well:'12825958578' }),
+    j('12833734318','Jesus Munoz Ribota','1310 E Water Ave Lovington NM, 88240', [], {}),
+  ],
+  '12246182018': [
+    j('12750669968','Michael Casares','1207 Pecan Ave Artesia NM, 88240', [], {}),
+    j('12832309162','Shannon R Cummins','316 W Apache Dr', [], {}),
+    j('12838116618','Cesar García Zubiate','30 Windy Ridge Rd, Artesia, NM 88210',
+      ['siteCheck','setup','whook','sinst','shook','steps'],
+      { steps:'12846775059', shook:'12846773911', sinst:'12846718417',
+        whook:'12846741880', siteCheck:'12846695625', setup:'12846742188' }),
+    j('12848192242','Lisa J Brininstool','TBD Hinson Rd, Lovington, NM 88260',
+      ['siteCheck','setup','well','whook','sinst','shook'],
+      { shook:'12848397934', sinst:'12848389365', whook:'12848395362',
+        siteCheck:'12848388545', setup:'12848388546', well:'12848364749' }),
+  ],
+};
+
+// [id, name, status, scheduleStart, finishedDate]
+const T = [
+  ['11903318125','Pad for Robert Gonzales','Not done',null,null],
+  ['11903322673','Pad for William Pierce','Not done',null,null],
+  ['11903338475','Steps for Robert Gonzales','Not done',null,null],
+  ['11904953566','Skirting for William Pierce','Not done',null,null],
+  ['11904965362','Site Check for Robert Gonzales','Not done',null,null],
+  ['11905040706','Foundation for William Pierce','Done','2026-05-08','2026-06-11'],
+  ['11906715355','Site Check for William Pierce','Done',null,'2026-06-11'],
+  ['11906834935','Break & Wrap for Robert Gonzales','Not done',null,null],
+  ['11906837005','Set Up for Robert Gonzales','Done',null,'2026-05-12'],
+  ['11906837297','Delivery for Robert Gonzales','Not done',null,null],
+  ['11906943139','Skirting for Robert Gonzales','Not done',null,null],
+  ['12237993627','Set Up for William Pierce','Working on it','2026-06-09',null],
+  ['12455770907','Septic Hookup for Keyla Duran','Done','2026-07-24','2026-08-03'],
+  ['12455770910','Water Well for Keyla Duran','Working on it','2026-08-07',null],
+  ['12455828454','Septic Install for Keyla Duran','Done',null,'2026-07-29'],
+  ['12455843740','Water Hookup for Keyla Duran','Not done',null,null],
+  ['12455845406','Electrical Service for Keyla Duran','Done','2026-07-29','2026-08-03'],
+  ['12592635439','Set Up for Andrea Rojas','Done',null,'2026-07-29'],
+  ['12592642092','Steps for Andrea Rojas','Done',null,'2026-07-29'],
+  ['12592663417','Pad for Andrea Rojas','Done',null,'2026-07-29'],
+  ['12825742786','Break & Wrap for Jacinto Menchava Segovia','Done','2026-08-08','2026-08-17'],
+  ['12825753977','Set Up for Jacinto Menchava Segovia','Not done','2026-08-25',null],
+  ['12825754704','Delivery for Jacinto Menchava Segovia','Done','2026-08-17','2026-08-17'],
+  ['12825756683','Pad for Jacinto Menchava Segovia','Done','2026-08-17','2026-08-17'],
+  ['12825767058','Site Check for Jacinto Menchava Segovia','Done','2026-07-17','2026-08-17'],
+  ['12825793917','Steps for Jacinto Menchava Segovia','Not done','2026-08-25',null],
+  ['12679190904','Pad for Ulises Jaquez Frias','Done','2026-07-31','2026-08-01'],
+  ['12679199776','Septic Install for Ulises Jaquez Frias','Not done',null,null],
+  ['12679200019','Site Check for Ulises Jaquez Frias','Done','2026-07-27','2026-08-01'],
+  ['12679232508','Steps for Ulises Jaquez Frias','Not done',null,null],
+  ['12679232757','Set Up for Ulises Jaquez Frias','Done','2026-07-31','2026-08-01'],
+  ['12679237839','Water Well for Ulises Jaquez Frias','Not done',null,null],
+  ['12685584876','Site Check for Hugo Ortiz','Done',null,'2026-07-31'],
+  ['12685593847','Set Up for Hugo Ortiz','Working on it','2026-08-13',null],
+  ['12799454157','Pad for Hugo Ortiz','Not done',null,null],
+  ['12799445373','Foundation Prep+Forms for Liliana Camarillo González','Done',null,'2026-08-15'],
+  ['12799475211','Remove Forms+Backfill for Liliana Camarillo González','Done',null,'2026-08-15'],
+  ['12799475544','Pour concrete for Liliana Camarillo González','Done',null,'2026-08-15'],
+  ['12799476949','Set Up for Liliana Camarillo González','Done',null,'2026-08-15'],
+  ['12807444581','Septic Hookup for Liliana Camarillo González','Not done',null,null],
+  ['12807454012','Electric Service for Liliana Camarillo González','Working on it',null,null],
+  ['12807500666','Water Hookup for Liliana Camarillo González','Working on it','2026-08-19','2026-08-15'],
+  ['12807509868','Skirting for Liliana Camarillo González','Not done',null,null],
+  ['12825921071','Site Check for Jubencio Castillo','Done',null,'2026-08-18'],
+  ['12825927518','Set Up for Jubencio Castillo','Done',null,'2026-08-18'],
+  ['12825958578','Water Well for Jubencio Castillo','Not done',null,null],
+  ['12825965815','Septic Hookup for Jubencio Castillo','Not done',null,null],
+  ['12825967218','Water Hookup for Jubencio Castillo','Not done',null,null],
+  ['12825967674','Septic Install for Jubencio Castillo','Done',null,'2026-08-18'],
+  ['12846695625','Site Check for Cesar García Zubiate','Not done',null,null],
+  ['12846718417','Septic Install for Cesar García Zubiate','Not done',null,null],
+  ['12846741880','Water Hookup for Cesar García Zubiate','Not done',null,null],
+  ['12846742188','Set Up for Cesar García Zubiate','Not done',null,null],
+  ['12846773911','Septic Hookup for Cesar García Zubiate','Not done',null,null],
+  ['12846775059','Steps for Cesar García Zubiate','Not done',null,null],
+  ['12848364749','Water Well for Lisa J Brininstool','Not done',null,null],
+  ['12848388545','Site Check for Lisa J Brininstool','Not done',null,null],
+  ['12848388546','Set Up for Lisa J Brininstool','Not done',null,null],
+  ['12848389365','Septic Install for Lisa J Brininstool','Not done',null,null],
+  ['12848395362','Water Hookup for Lisa J Brininstool','Not done',null,null],
+  ['12848397934','Septic Hookup for Lisa J Brininstool','Not done',null,null],
+];
+
+export const tasksById = new Map(T.map(([id, name, status, scheduleStart, finishedDate]) =>
+  [id, { id, name, status, scheduleStart, finishedDate }]));

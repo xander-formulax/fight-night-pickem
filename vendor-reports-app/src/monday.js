@@ -88,9 +88,12 @@ export async function fetchItems({ boardId, columnIds, groupIds, token, limit = 
 
 /** Fetch specific items by id, in chunks. */
 export async function fetchItemsByIds({ ids, columnIds, token, chunk = 100 }) {
+  // NOTE: items(ids:) defaults to returning only 25 items. Without an explicit
+  // limit the rest come back silently missing — which reads downstream as "task
+  // not found" and renders finished work as "Not yet scheduled".
   const query = `
-    query ($ids: [ID!]!, $columnIds: [String!]) {
-      items(ids: $ids) {
+    query ($ids: [ID!]!, $columnIds: [String!], $limit: Int!) {
+      items(ids: $ids, limit: $limit) {
         id
         name
         column_values(ids: $columnIds) { ${COLUMN_FRAGMENT} }
@@ -98,7 +101,12 @@ export async function fetchItemsByIds({ ids, columnIds, token, chunk = 100 }) {
     }`;
   const out = [];
   for (let i = 0; i < ids.length; i += chunk) {
-    const data = await mondayFetch(query, { ids: ids.slice(i, i + chunk), columnIds }, token);
+    const slice = ids.slice(i, i + chunk);
+    const data = await mondayFetch(query, { ids: slice, columnIds, limit: chunk }, token);
+    const got = data.items?.length ?? 0;
+    if (got < slice.length) {
+      throw new Error(`monday returned ${got} of ${slice.length} requested items — refusing to build a report from partial data`);
+    }
     out.push(...(data.items || []));
   }
   return out;
@@ -138,12 +146,12 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
     const vendorId = cols[JOB_COLUMNS.vendor]?.linked_item_ids?.[0] || null;
     if (vendorId) vendorIds.add(String(vendorId));
 
-    const taskIdByPhase = {};
+    const taskIdsByPhase = {};
     for (const phase of PHASES) {
-      const linked = cols[phase.rel]?.linked_item_ids?.[0];
-      if (linked) {
-        taskIdByPhase[phase.name] = String(linked);
-        taskIds.add(String(linked));
+      const linked = (cols[phase.rel]?.linked_item_ids || []).map(String);
+      if (linked.length) {
+        taskIdsByPhase[phase.name] = linked;
+        for (const id of linked) taskIds.add(id);
       }
     }
 
@@ -155,7 +163,7 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
       finishDate: finish,
       group: raw.group?.id,
       scope: Object.fromEntries(PHASES.map((p) => [p.scope, cols[p.scope]?.label || cols[p.scope]?.text || null])),
-      taskIdByPhase,
+      taskIdsByPhase,
     });
   }
 

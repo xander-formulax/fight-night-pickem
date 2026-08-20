@@ -1,0 +1,370 @@
+<title>Vendor Reporting Centre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground:#F1F3EF; --surface:#FFFFFF; --surface-2:#E7EAE4; --raise:#FAFBF9;
+    --ink:#191F21; --ink-soft:#5A6863; --ink-faint:#8B9791;
+    --rule:#D5DAD3; --rule-firm:#B8BFB7;
+    --accent:#0B6E4F; --accent-in:#FFFFFF; --accent-wash:#E2EDE8;
+    --warn:#B26612; --warn-wash:#F6ECDF; --crit:#A32E27; --crit-wash:#F7E5E3;
+    --shadow:0 1px 2px rgba(25,31,33,.06), 0 8px 24px -12px rgba(25,31,33,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#121618; --surface:#1B2124; --surface-2:#242B2E; --raise:#20272A;
+      --ink:#E6EBE7; --ink-soft:#9DAAA4; --ink-faint:#74827C;
+      --rule:#2C3438; --rule-firm:#3E484C;
+      --accent:#4DBF8F; --accent-in:#0C1512; --accent-wash:#1C2E28;
+      --warn:#E0A055; --warn-wash:#2E2620; --crit:#E0736A; --crit-wash:#2E2020;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#121618; --surface:#1B2124; --surface-2:#242B2E; --raise:#20272A;
+    --ink:#E6EBE7; --ink-soft:#9DAAA4; --ink-faint:#74827C;
+    --rule:#2C3438; --rule-firm:#3E484C;
+    --accent:#4DBF8F; --accent-in:#0C1512; --accent-wash:#1C2E28;
+    --warn:#E0A055; --warn-wash:#2E2620; --crit:#E0736A; --crit-wash:#2E2020;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+    font-size:15.5px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .mono { font-family:"IBM Plex Mono",ui-monospace,monospace; }
+
+  .bar {
+    position:sticky; top:0; z-index:20; background:var(--surface);
+    border-bottom:1px solid var(--rule); padding:13px 22px;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  .brand {
+    font-family:Archivo,sans-serif; font-weight:700; font-size:12px;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0;
+  }
+  .brand span { display:block; color:var(--ink); letter-spacing:-.01em;
+    font-size:17px; text-transform:none; font-weight:600; margin-top:1px; }
+  .bar-note { margin-left:auto; font-size:11.5px; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--ink-faint); }
+
+  .shell { display:grid; grid-template-columns:252px 1fr; min-height:calc(100vh - 58px); }
+
+  /* ---- vendor rail ---- */
+  .rail { border-right:1px solid var(--rule); background:var(--raise); padding:16px 0; }
+  .rail-h { font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--ink-faint); margin:0 0 8px; padding:0 18px; }
+  .vbtn {
+    display:block; width:100%; text-align:left; background:none; border:0;
+    border-left:3px solid transparent; padding:11px 18px; cursor:pointer;
+    color:var(--ink); font:inherit; font-size:14.5px;
+  }
+  .vbtn:hover { background:var(--surface-2); }
+  .vbtn[aria-current="true"] { background:var(--surface); border-left-color:var(--accent); font-weight:600; }
+  .vbtn small { display:block; color:var(--ink-faint); font-size:12px; margin-top:2px; }
+  .vbtn .dot { display:inline-block; width:6px; height:6px; border-radius:50%;
+    background:var(--crit); margin-left:5px; vertical-align:middle; }
+
+  /* ---- main ---- */
+  .main { padding:26px 30px 70px; min-width:0; }
+  h1 { font-family:Archivo,sans-serif; font-weight:600; font-size:1.75rem;
+    letter-spacing:-.022em; margin:0 0 4px; text-wrap:balance; }
+  .sub { color:var(--ink-soft); font-size:14px; margin:0 0 20px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr));
+    gap:10px; margin:0 0 20px; }
+  .kpi { background:var(--surface); border:1px solid var(--rule);
+    border-top:3px solid var(--sev,var(--rule-firm)); border-radius:3px; padding:13px 15px; }
+  .kpi.ok { --sev:var(--accent); } .kpi.warn { --sev:var(--warn); } .kpi.crit { --sev:var(--crit); }
+  .kpi b { display:block; font-family:Archivo,sans-serif; font-weight:700; font-size:1.7rem;
+    line-height:1; letter-spacing:-.03em; font-variant-numeric:tabular-nums;
+    color:var(--sev,var(--ink)); margin-bottom:4px; }
+  .kpi span { font-size:12.5px; color:var(--ink-soft); }
+
+  .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 22px;
+    padding:14px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px; }
+  .actions label { font-size:12.5px; color:var(--ink-soft); }
+  select, .btn {
+    font:inherit; font-size:14px; padding:8px 13px; border-radius:3px;
+    border:1px solid var(--rule-firm); background:var(--surface); color:var(--ink); cursor:pointer;
+  }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-in); font-weight:600; }
+  .btn:hover { border-color:var(--accent); }
+  .btn.primary:hover { filter:brightness(1.08); }
+
+  /* ---- home rows ---- */
+  .homes { display:flex; flex-direction:column; gap:9px; }
+  .home {
+    background:var(--surface); border:1px solid var(--rule);
+    border-left:3px solid var(--sev,var(--rule-firm)); border-radius:3px;
+  }
+  .home.complete { --sev:var(--accent); }
+  .home.active   { --sev:var(--rule-firm); }
+  .home.stalled  { --sev:var(--crit); }
+  .home.unscoped { --sev:var(--warn); }
+  .home-top {
+    width:100%; background:none; border:0; font:inherit; color:inherit; cursor:pointer;
+    display:grid; grid-template-columns:1fr auto; gap:4px 18px; align-items:center;
+    padding:14px 17px; text-align:left;
+  }
+  .home-name { font-weight:600; font-size:15.5px; }
+  .home-addr { font-size:12.5px; color:var(--ink-faint); }
+  .home-right { display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end; }
+  .meter { width:118px; height:6px; background:var(--surface-2); border-radius:4px; overflow:hidden; }
+  .meter i { display:block; height:100%; background:var(--accent); border-radius:4px; }
+  .frac { font-size:12px; color:var(--ink-soft); font-variant-numeric:tabular-nums; min-width:52px; }
+  .pill {
+    font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+    padding:3px 8px; border-radius:2px; white-space:nowrap;
+  }
+  .pill.complete { background:var(--accent-wash); color:var(--accent); }
+  .pill.active   { background:var(--surface-2); color:var(--ink-soft); }
+  .pill.stalled  { background:var(--crit-wash); color:var(--crit); }
+  .pill.unscoped { background:var(--warn-wash); color:var(--warn); }
+
+  .home-meta { grid-column:1 / -1; display:flex; gap:16px; flex-wrap:wrap;
+    font-size:12px; color:var(--ink-faint); margin-top:2px; }
+  .home-body { display:none; padding:0 17px 16px; border-top:1px solid var(--rule); }
+  .home.open .home-body { display:block; }
+  .grp { margin-top:14px; }
+  .grp h4 { font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+    margin:0 0 6px; color:var(--ink-soft); font-family:"IBM Plex Mono",monospace; }
+  .grp h4.done { color:var(--accent); }
+  .grp ul { margin:0; padding:0; list-style:none; }
+  .grp li { display:flex; justify-content:space-between; gap:14px; font-size:14px;
+    padding:4px 0; border-bottom:1px dotted var(--rule); }
+  .grp li em { font-style:normal; font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+  .grp li em.active-t { color:var(--accent); font-weight:600; }
+  .grp li em.hold-t { color:var(--warn); }
+  .grp li em.unscheduled-t { color:var(--ink-faint); }
+  .empty { font-size:13.5px; color:var(--ink-soft); background:var(--surface-2);
+    padding:9px 13px; border-radius:3px; margin-top:14px; }
+
+  /* ---- report view ---- */
+  .report-wrap { display:none; }
+  body.showing-report .shell { display:none; }
+  body.showing-report .report-wrap { display:block; }
+  .rbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    padding:14px 22px; border-bottom:1px solid var(--rule); background:var(--surface); }
+  .rbar .spacer { margin-left:auto; }
+  .paper { max-width:720px; margin:26px auto 70px; background:var(--surface);
+    border:1px solid var(--rule); border-radius:4px; padding:34px 34px 40px; box-shadow:var(--shadow); }
+  .p-brand { font-family:Archivo,sans-serif; font-weight:700; font-size:12px;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 3px; }
+  .p-title { font-family:Archivo,sans-serif; font-weight:600; font-size:1.5rem;
+    letter-spacing:-.02em; margin:0 0 3px; }
+  .p-dates { font-size:13.5px; color:var(--ink-soft); margin:0 0 18px; }
+  .p-count { font-size:14px; padding:11px 15px; background:var(--surface-2);
+    border-radius:3px; margin:0 0 6px; }
+  .p-job { border-top:1px solid var(--rule); padding:20px 0 2px; }
+  .p-job h3 { font-family:Archivo,sans-serif; font-weight:600; font-size:1.05rem; margin:0 0 2px; }
+  .p-addr { font-size:13px; color:var(--ink-soft); margin:0 0 12px; }
+  .p-prog { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .p-foot { border-top:1px solid var(--rule); margin-top:20px; padding-top:15px;
+    font-size:13px; color:var(--ink-soft); }
+  .note { max-width:720px; margin:0 auto; padding:0 22px;
+    font-size:13px; color:var(--ink-faint); }
+
+  @media print {
+    .bar, .rbar, .note { display:none !important; }
+    body { background:#fff; }
+    .paper { box-shadow:none; border:0; margin:0; max-width:none; padding:0; }
+  }
+  @media (max-width:800px) {
+    .shell { grid-template-columns:1fr; }
+    .rail { border-right:0; border-bottom:1px solid var(--rule); }
+    .main { padding:20px 16px 60px; }
+    .home-top { grid-template-columns:1fr; }
+    .home-right { justify-content:flex-start; }
+  }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+
+<div class="bar">
+  <p class="brand">Dragon Transport<span>Vendor Reporting Centre</span></p>
+  <span class="bar-note mono">Prototype · live board data · 20 Aug 2026</span>
+</div>
+
+<div class="shell">
+  <nav class="rail">
+    <p class="rail-h">Vendors</p>
+    <div id="vendorList"></div>
+  </nav>
+  <main class="main">
+    <h1 id="vName"></h1>
+    <p class="sub" id="vSub"></p>
+    <div class="kpis" id="kpis"></div>
+    <div class="actions">
+      <label for="range">Report period</label>
+      <select id="range"></select>
+      <button class="btn primary" id="createBtn">Create report</button>
+      <span class="mono" style="font-size:11.5px;color:var(--ink-faint)">Nothing is sent — you export and send it yourself</span>
+    </div>
+    <div class="homes" id="homes"></div>
+  </main>
+</div>
+
+<div class="report-wrap">
+  <div class="rbar">
+    <button class="btn" id="backBtn">&larr; Back</button>
+    <span class="mono" style="font-size:11.5px;color:var(--ink-faint)" id="rLabel"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="copyBtn">Copy for email</button>
+    <button class="btn primary" id="printBtn">Export as PDF</button>
+  </div>
+  <div class="paper" id="paper"></div>
+  <p class="note">Export as PDF opens your browser's print dialogue — choose &ldquo;Save as PDF&rdquo;. Copy for email puts the formatted report on your clipboard to paste into Gmail or Outlook.</p>
+</div>
+
+<script id="data" type="application/json">{"today":"2026-08-20","ranges":[{"key":"this-week","label":"This week","range":"August 17-23, 2026"},{"key":"last-week","label":"Last week","range":"August 10-16, 2026"},{"key":"last-30","label":"Last 30 days","range":"July 22 - August 20, 2026"}],"vendors":[{"id":"11884347330","name":"Titan Midland","homes":5,"counts":{"complete":1,"active":3,"stalled":1},"nextScheduled":"2026-08-25","nextScheduledLabel":"Tue, Aug 25","lastActivity":"2026-08-17","lastActivityLabel":"Mon, Aug 17","reports":{"this-week":{"vendor":{"id":"11884347330","name":"Titan Midland"},"week":{"start":"2026-08-17","end":"2026-08-23"},"activeHomes":5,"completedCount":4,"counts":{"complete":1,"active":3,"stalled":1},"nextScheduled":"2026-08-25","lastActivity":"2026-08-17","jobs":[{"id":"12592634253","name":"Andrea Rojas","address":"6417 S CR 1035 Stanton Tx","state":"complete","progress":{"done":3,"total":3,"pct":100},"completed":[],"pending":[],"lastActivity":"2026-07-29","nextScheduled":null,"lastActivityLabel":"Wed, Jul 29","nextScheduledLabel":null},{"id":"12825716587","name":"Jacinto Menchava Segovia","address":"183 CR 109 Seminole, TX 79360","state":"active","progress":{"done":4,"total":6,"pct":67},"completed":[{"name":"Break and Wrap","date":"2026-08-17","dateLabel":"Mon, Aug 17"},{"name":"Delivery","date":"2026-08-17","dateLabel":"Mon, Aug 17"},{"name":"Pad","date":"2026-08-17","dateLabel":"Mon, Aug 17"},{"name":"Site Check","date":"2026-08-17","dateLabel":"Mon, Aug 17"}],"pending":[{"name":"Set Up","order":6,"date":"2026-08-25","status":"Scheduled Tue, Aug 25","tone":"scheduled"},{"name":"Steps","order":7,"date":"2026-08-25","status":"Scheduled Tue, Aug 25","tone":"scheduled"}],"lastActivity":"2026-08-17","nextScheduled":"2026-08-25","lastActivityLabel":"Mon, Aug 17","nextScheduledLabel":"Tue, Aug 25"},{"id":"12425610879","name":"Keyla Duran","address":"2435 PR 200-G Seminole TX 79360","state":"active","progress":{"done":3,"total":5,"pct":60},"completed":[],"pending":[{"name":"Water Well","order":11,"status":"In progress","tone":"active"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-03","nextScheduled":null,"lastActivityLabel":"Mon, Aug 3","nextScheduledLabel":null},{"id":"11903188053","name":"Robert Gonzales","address":"2811 CR 349 Denver City, TX 79323","state":"stalled","progress":{"done":1,"total":7,"pct":14},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Break and Wrap","order":3,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Delivery","order":4,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-05-12","nextScheduled":null,"lastActivityLabel":"Tue, May 12","nextScheduledLabel":null},{"id":"11903188051","name":"William Pierce","address":"221 S Robertson Rd Loving, NM","state":"active","progress":{"done":2,"total":5,"pct":40},"completed":[],"pending":[{"name":"Set Up","order":6,"status":"In progress","tone":"active"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-06-11","nextScheduled":null,"lastActivityLabel":"Thu, Jun 11","nextScheduledLabel":null}]},"last-week":{"vendor":{"id":"11884347330","name":"Titan Midland"},"week":{"start":"2026-08-10","end":"2026-08-16"},"activeHomes":5,"completedCount":0,"counts":{"complete":1,"active":3,"stalled":1},"nextScheduled":"2026-08-25","lastActivity":"2026-08-17","jobs":[{"id":"12592634253","name":"Andrea Rojas","address":"6417 S CR 1035 Stanton Tx","state":"complete","progress":{"done":3,"total":3,"pct":100},"completed":[],"pending":[],"lastActivity":"2026-07-29","nextScheduled":null,"lastActivityLabel":"Wed, Jul 29","nextScheduledLabel":null},{"id":"12825716587","name":"Jacinto Menchava Segovia","address":"183 CR 109 Seminole, TX 79360","state":"active","progress":{"done":4,"total":6,"pct":67},"completed":[],"pending":[{"name":"Set Up","order":6,"date":"2026-08-25","status":"Scheduled Tue, Aug 25","tone":"scheduled"},{"name":"Steps","order":7,"date":"2026-08-25","status":"Scheduled Tue, Aug 25","tone":"scheduled"}],"lastActivity":"2026-08-17","nextScheduled":"2026-08-25","lastActivityLabel":"Mon, Aug 17","nextScheduledLabel":"Tue, Aug 25"},{"id":"12425610879","name":"Keyla Duran","address":"2435 PR 200-G Seminole TX 79360","state":"active","progress":{"done":3,"total":5,"pct":60},"completed":[],"pending":[{"name":"Water Well","order":11,"status":"In progress","tone":"active"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-03","nextScheduled":null,"lastActivityLabel":"Mon, Aug 3","nextScheduledLabel":null},{"id":"11903188053","name":"Robert Gonzales","address":"2811 CR 349 Denver City, TX 79323","state":"stalled","progress":{"done":1,"total":7,"pct":14},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Break and Wrap","order":3,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Delivery","order":4,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-05-12","nextScheduled":null,"lastActivityLabel":"Tue, May 12","nextScheduledLabel":null},{"id":"11903188051","name":"William Pierce","address":"221 S Robertson Rd Loving, NM","state":"active","progress":{"done":2,"total":5,"pct":40},"completed":[],"pending":[{"name":"Set Up","order":6,"status":"In progress","tone":"active"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-06-11","nextScheduled":null,"lastActivityLabel":"Thu, Jun 11","nextScheduledLabel":null}]},"last-30":{"vendor":{"id":"11884347330","name":"Titan Midland"},"week":{"start":"2026-07-22","end":"2026-08-20"},"activeHomes":5,"completedCount":10,"counts":{"complete":1,"active":3,"stalled":1},"nextScheduled":"2026-08-25","lastActivity":"2026-08-17","jobs":[{"id":"12592634253","name":"Andrea Rojas","address":"6417 S CR 1035 Stanton Tx","state":"complete","progress":{"done":3,"total":3,"pct":100},"completed":[{"name":"Pad","date":"2026-07-29","dateLabel":"Wed, Jul 29"},{"name":"Set Up","date":"2026-07-29","dateLabel":"Wed, Jul 29"},{"name":"Steps","date":"2026-07-29","dateLabel":"Wed, Jul 29"}],"pending":[],"lastActivity":"2026-07-29","nextScheduled":null,"lastActivityLabel":"Wed, Jul 29","nextScheduledLabel":null},{"id":"12825716587","name":"Jacinto Menchava Segovia","address":"183 CR 109 Seminole, TX 79360","state":"active","progress":{"done":4,"total":6,"pct":67},"completed":[{"name":"Break and Wrap","date":"2026-08-17","dateLabel":"Mon, Aug 17"},{"name":"Delivery","date":"2026-08-17","dateLabel":"Mon, Aug 17"},{"name":"Pad","date":"2026-08-17","dateLabel":"Mon, Aug 17"},{"name":"Site Check","date":"2026-08-17","dateLabel":"Mon, Aug 17"}],"pending":[{"name":"Set Up","order":6,"date":"2026-08-25","status":"Scheduled Tue, Aug 25","tone":"scheduled"},{"name":"Steps","order":7,"date":"2026-08-25","status":"Scheduled Tue, Aug 25","tone":"scheduled"}],"lastActivity":"2026-08-17","nextScheduled":"2026-08-25","lastActivityLabel":"Mon, Aug 17","nextScheduledLabel":"Tue, Aug 25"},{"id":"12425610879","name":"Keyla Duran","address":"2435 PR 200-G Seminole TX 79360","state":"active","progress":{"done":3,"total":5,"pct":60},"completed":[{"name":"Septic Install","date":"2026-07-29","dateLabel":"Wed, Jul 29"},{"name":"Electric Hookup","date":"2026-08-03","dateLabel":"Mon, Aug 3"},{"name":"Septic Hookup","date":"2026-08-03","dateLabel":"Mon, Aug 3"}],"pending":[{"name":"Water Well","order":11,"status":"In progress","tone":"active"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-03","nextScheduled":null,"lastActivityLabel":"Mon, Aug 3","nextScheduledLabel":null},{"id":"11903188053","name":"Robert Gonzales","address":"2811 CR 349 Denver City, TX 79323","state":"stalled","progress":{"done":1,"total":7,"pct":14},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Break and Wrap","order":3,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Delivery","order":4,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-05-12","nextScheduled":null,"lastActivityLabel":"Tue, May 12","nextScheduledLabel":null},{"id":"11903188051","name":"William Pierce","address":"221 S Robertson Rd Loving, NM","state":"active","progress":{"done":2,"total":5,"pct":40},"completed":[],"pending":[{"name":"Set Up","order":6,"status":"In progress","tone":"active"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-06-11","nextScheduled":null,"lastActivityLabel":"Thu, Jun 11","nextScheduledLabel":null}]}}},{"id":"12246117985","name":"Palm Harbor Homes Hobbs / Seminole","homes":5,"counts":{"active":4,"unscoped":1},"nextScheduled":null,"nextScheduledLabel":null,"lastActivity":"2026-08-18","lastActivityLabel":"Tue, Aug 18","reports":{"this-week":{"vendor":{"id":"12246117985","name":"Palm Harbor Homes Hobbs / Seminole"},"week":{"start":"2026-08-17","end":"2026-08-23"},"activeHomes":5,"completedCount":3,"counts":{"active":4,"unscoped":1},"nextScheduled":null,"lastActivity":"2026-08-18","jobs":[{"id":"12685498607","name":"Hugo Ortiz","address":"317 S East First Street Loving NM","state":"active","progress":{"done":1,"total":3,"pct":33},"completed":[],"pending":[{"name":"Set Up","order":6,"status":"In progress","tone":"active"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-07-31","nextScheduled":null,"lastActivityLabel":"Fri, Jul 31","nextScheduledLabel":null},{"id":"12833734318","name":"Jesus Munoz Ribota","address":"1310 E Water Ave Lovington NM, 88240","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12825819379","name":"Jubencio Castillo","address":"3235 W Trevino Rd. Hobbs Nm., 88240","state":"active","progress":{"done":3,"total":6,"pct":50},"completed":[{"name":"Septic Install","date":"2026-08-18","dateLabel":"Tue, Aug 18"},{"name":"Set Up","date":"2026-08-18","dateLabel":"Tue, Aug 18"},{"name":"Site Check","date":"2026-08-18","dateLabel":"Tue, Aug 18"}],"pending":[{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-18","nextScheduled":null,"lastActivityLabel":"Tue, Aug 18","nextScheduledLabel":null},{"id":"12799397075","name":"Liliana Camarillo González","address":"1779 Pecos Hwy, Loving Nm., 88256","state":"active","progress":{"done":2,"total":6,"pct":33},"completed":[],"pending":[{"name":"Electric Service","order":9,"status":"In progress","tone":"active"},{"name":"Water Hookup","order":12,"status":"In progress","tone":"active"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-15","nextScheduled":null,"lastActivityLabel":"Sat, Aug 15","nextScheduledLabel":null},{"id":"12676321308","name":"Ulises Jaquez Frias","address":"358 Fm 3306, Seminole Tx, 79360","state":"active","progress":{"done":3,"total":6,"pct":50},"completed":[],"pending":[{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-01","nextScheduled":null,"lastActivityLabel":"Sat, Aug 1","nextScheduledLabel":null}]},"last-week":{"vendor":{"id":"12246117985","name":"Palm Harbor Homes Hobbs / Seminole"},"week":{"start":"2026-08-10","end":"2026-08-16"},"activeHomes":5,"completedCount":4,"counts":{"active":4,"unscoped":1},"nextScheduled":null,"lastActivity":"2026-08-18","jobs":[{"id":"12685498607","name":"Hugo Ortiz","address":"317 S East First Street Loving NM","state":"active","progress":{"done":1,"total":3,"pct":33},"completed":[],"pending":[{"name":"Set Up","order":6,"status":"In progress","tone":"active"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-07-31","nextScheduled":null,"lastActivityLabel":"Fri, Jul 31","nextScheduledLabel":null},{"id":"12833734318","name":"Jesus Munoz Ribota","address":"1310 E Water Ave Lovington NM, 88240","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12825819379","name":"Jubencio Castillo","address":"3235 W Trevino Rd. Hobbs Nm., 88240","state":"active","progress":{"done":3,"total":6,"pct":50},"completed":[],"pending":[{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-18","nextScheduled":null,"lastActivityLabel":"Tue, Aug 18","nextScheduledLabel":null},{"id":"12799397075","name":"Liliana Camarillo González","address":"1779 Pecos Hwy, Loving Nm., 88256","state":"active","progress":{"done":2,"total":6,"pct":33},"completed":[{"name":"Foundation Prep+Forms","date":"2026-08-15","dateLabel":"Sat, Aug 15"},{"name":"Pour concrete","date":"2026-08-15","dateLabel":"Sat, Aug 15"},{"name":"Remove Forms+Backfill","date":"2026-08-15","dateLabel":"Sat, Aug 15"},{"name":"Set Up","date":"2026-08-15","dateLabel":"Sat, Aug 15"}],"pending":[{"name":"Electric Service","order":9,"status":"In progress","tone":"active"},{"name":"Water Hookup","order":12,"status":"In progress","tone":"active"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-15","nextScheduled":null,"lastActivityLabel":"Sat, Aug 15","nextScheduledLabel":null},{"id":"12676321308","name":"Ulises Jaquez Frias","address":"358 Fm 3306, Seminole Tx, 79360","state":"active","progress":{"done":3,"total":6,"pct":50},"completed":[],"pending":[{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-01","nextScheduled":null,"lastActivityLabel":"Sat, Aug 1","nextScheduledLabel":null}]},"last-30":{"vendor":{"id":"12246117985","name":"Palm Harbor Homes Hobbs / Seminole"},"week":{"start":"2026-07-22","end":"2026-08-20"},"activeHomes":5,"completedCount":11,"counts":{"active":4,"unscoped":1},"nextScheduled":null,"lastActivity":"2026-08-18","jobs":[{"id":"12685498607","name":"Hugo Ortiz","address":"317 S East First Street Loving NM","state":"active","progress":{"done":1,"total":3,"pct":33},"completed":[{"name":"Site Check","date":"2026-07-31","dateLabel":"Fri, Jul 31"}],"pending":[{"name":"Set Up","order":6,"status":"In progress","tone":"active"},{"name":"Pad","order":1,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-07-31","nextScheduled":null,"lastActivityLabel":"Fri, Jul 31","nextScheduledLabel":null},{"id":"12833734318","name":"Jesus Munoz Ribota","address":"1310 E Water Ave Lovington NM, 88240","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12825819379","name":"Jubencio Castillo","address":"3235 W Trevino Rd. Hobbs Nm., 88240","state":"active","progress":{"done":3,"total":6,"pct":50},"completed":[{"name":"Septic Install","date":"2026-08-18","dateLabel":"Tue, Aug 18"},{"name":"Set Up","date":"2026-08-18","dateLabel":"Tue, Aug 18"},{"name":"Site Check","date":"2026-08-18","dateLabel":"Tue, Aug 18"}],"pending":[{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-18","nextScheduled":null,"lastActivityLabel":"Tue, Aug 18","nextScheduledLabel":null},{"id":"12799397075","name":"Liliana Camarillo González","address":"1779 Pecos Hwy, Loving Nm., 88256","state":"active","progress":{"done":2,"total":6,"pct":33},"completed":[{"name":"Foundation Prep+Forms","date":"2026-08-15","dateLabel":"Sat, Aug 15"},{"name":"Pour concrete","date":"2026-08-15","dateLabel":"Sat, Aug 15"},{"name":"Remove Forms+Backfill","date":"2026-08-15","dateLabel":"Sat, Aug 15"},{"name":"Set Up","date":"2026-08-15","dateLabel":"Sat, Aug 15"}],"pending":[{"name":"Electric Service","order":9,"status":"In progress","tone":"active"},{"name":"Water Hookup","order":12,"status":"In progress","tone":"active"},{"name":"Skirting","order":8,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-15","nextScheduled":null,"lastActivityLabel":"Sat, Aug 15","nextScheduledLabel":null},{"id":"12676321308","name":"Ulises Jaquez Frias","address":"358 Fm 3306, Seminole Tx, 79360","state":"active","progress":{"done":3,"total":6,"pct":50},"completed":[{"name":"Pad","date":"2026-08-01","dateLabel":"Sat, Aug 1"},{"name":"Set Up","date":"2026-08-01","dateLabel":"Sat, Aug 1"},{"name":"Site Check","date":"2026-08-01","dateLabel":"Sat, Aug 1"}],"pending":[{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":"2026-08-01","nextScheduled":null,"lastActivityLabel":"Sat, Aug 1","nextScheduledLabel":null}]}}},{"id":"12246182018","name":"Solitaire Homes Hobbs","homes":4,"counts":{"stalled":2,"unscoped":2},"nextScheduled":null,"nextScheduledLabel":null,"lastActivity":null,"lastActivityLabel":null,"reports":{"this-week":{"vendor":{"id":"12246182018","name":"Solitaire Homes Hobbs"},"week":{"start":"2026-08-17","end":"2026-08-23"},"activeHomes":4,"completedCount":0,"counts":{"stalled":2,"unscoped":2},"nextScheduled":null,"lastActivity":null,"jobs":[{"id":"12838116618","name":"Cesar García Zubiate","address":"30 Windy Ridge Rd, Artesia, NM 88210","state":"stalled","progress":{"done":0,"total":6,"pct":0},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Set Up","order":6,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12848192242","name":"Lisa J Brininstool","address":"TBD Hinson Rd, Lovington, NM 88260","state":"stalled","progress":{"done":0,"total":6,"pct":0},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Set Up","order":6,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12750669968","name":"Michael Casares","address":"1207 Pecan Ave Artesia NM, 88240","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12832309162","name":"Shannon R Cummins","address":"316 W Apache Dr","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null}]},"last-week":{"vendor":{"id":"12246182018","name":"Solitaire Homes Hobbs"},"week":{"start":"2026-08-10","end":"2026-08-16"},"activeHomes":4,"completedCount":0,"counts":{"stalled":2,"unscoped":2},"nextScheduled":null,"lastActivity":null,"jobs":[{"id":"12838116618","name":"Cesar García Zubiate","address":"30 Windy Ridge Rd, Artesia, NM 88210","state":"stalled","progress":{"done":0,"total":6,"pct":0},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Set Up","order":6,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12848192242","name":"Lisa J Brininstool","address":"TBD Hinson Rd, Lovington, NM 88260","state":"stalled","progress":{"done":0,"total":6,"pct":0},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Set Up","order":6,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12750669968","name":"Michael Casares","address":"1207 Pecan Ave Artesia NM, 88240","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12832309162","name":"Shannon R Cummins","address":"316 W Apache Dr","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null}]},"last-30":{"vendor":{"id":"12246182018","name":"Solitaire Homes Hobbs"},"week":{"start":"2026-07-22","end":"2026-08-20"},"activeHomes":4,"completedCount":0,"counts":{"stalled":2,"unscoped":2},"nextScheduled":null,"lastActivity":null,"jobs":[{"id":"12838116618","name":"Cesar García Zubiate","address":"30 Windy Ridge Rd, Artesia, NM 88210","state":"stalled","progress":{"done":0,"total":6,"pct":0},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Set Up","order":6,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Steps","order":7,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12848192242","name":"Lisa J Brininstool","address":"TBD Hinson Rd, Lovington, NM 88260","state":"stalled","progress":{"done":0,"total":6,"pct":0},"completed":[],"pending":[{"name":"Site Check","order":0,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Set Up","order":6,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Well","order":11,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Water Hookup","order":12,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Install","order":13,"status":"Not yet scheduled","tone":"unscheduled"},{"name":"Septic Hookup","order":14,"status":"Not yet scheduled","tone":"unscheduled"}],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12750669968","name":"Michael Casares","address":"1207 Pecan Ave Artesia NM, 88240","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null},{"id":"12832309162","name":"Shannon R Cummins","address":"316 W Apache Dr","state":"unscoped","progress":{"done":0,"total":0,"pct":0},"completed":[],"pending":[],"lastActivity":null,"nextScheduled":null,"lastActivityLabel":null,"nextScheduledLabel":null}]}}}]}</script>
+<script>
+(function () {
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const STATE_LABEL = { complete:'Complete', active:'On track', stalled:'Stalled', unscoped:'Not scoped' };
+
+  let current = DATA.vendors[0];
+  let range = DATA.ranges[0].key;
+
+  $('range').innerHTML = DATA.ranges.map((r) =>
+    `<option value="${r.key}">${esc(r.label)} — ${esc(r.range)}</option>`).join('');
+
+  function renderRail() {
+    $('vendorList').innerHTML = DATA.vendors.map((v) => {
+      const attention = (v.counts.stalled || 0) + (v.counts.unscoped || 0);
+      return `<button class="vbtn" data-id="${v.id}" aria-current="${v.id === current.id}">
+        ${esc(v.name)}${attention ? '<span class="dot" title="needs attention"></span>' : ''}
+        <small>${v.homes} home${v.homes === 1 ? '' : 's'}</small></button>`;
+    }).join('');
+    $('vendorList').querySelectorAll('.vbtn').forEach((b) => {
+      b.onclick = () => { current = DATA.vendors.find((v) => v.id === b.dataset.id); renderAll(); };
+    });
+  }
+
+  function renderKpis() {
+    const c = current.counts;
+    const cells = [
+      { n: current.homes, l: 'homes', cls: '' },
+      { n: current.reports[range].completedCount, l: 'finished this period', cls: 'ok' },
+      { n: c.stalled || 0, l: 'stalled', cls: (c.stalled ? 'crit' : '') },
+      { n: c.unscoped || 0, l: 'not scoped yet', cls: (c.unscoped ? 'warn' : '') },
+    ];
+    $('kpis').innerHTML = cells.map((k) =>
+      `<div class="kpi ${k.cls}"><b>${k.n}</b><span>${k.l}</span></div>`).join('');
+  }
+
+  function homeRow(j) {
+    const done = j.completed.length
+      ? `<div class="grp"><h4 class="done">Finished this period</h4><ul>${
+          j.completed.map((c) => `<li><span>${esc(c.name)}</span><em>${esc(c.dateLabel)}</em></li>`).join('')}</ul></div>`
+      : `<div class="empty">Nothing finished on this home in the selected period.</div>`;
+    const todo = j.pending.length
+      ? `<div class="grp"><h4>Still to do</h4><ul>${
+          j.pending.map((p) => `<li><span>${esc(p.name)}</span><em class="${p.tone}-t">${esc(p.status)}</em></li>`).join('')}</ul></div>`
+      : `<div class="empty">All scheduled work on this home is complete.</div>`;
+    const body = j.state === 'unscoped'
+      ? `<div class="empty">No build phases are marked Yes on this job yet, so there is nothing to report. Set the phase columns in monday and it will fill in.</div>`
+      : done + todo;
+
+    const meta = [
+      j.lastActivity ? `Last finished ${esc(j.lastActivityLabel || j.lastActivity)}` : 'Nothing finished yet',
+      j.nextScheduled ? `Next up ${esc(j.nextScheduledLabel || j.nextScheduled)}` : 'Nothing scheduled',
+    ];
+
+    return `<article class="home ${j.state}">
+      <button class="home-top" type="button">
+        <span><span class="home-name">${esc(j.name)}</span><br><span class="home-addr">${esc(j.address)}</span></span>
+        <span class="home-right">
+          ${j.state === 'unscoped' ? '' :
+            `<span class="meter"><i style="width:${j.progress.pct}%"></i></span>
+             <span class="frac mono">${j.progress.done} of ${j.progress.total}</span>`}
+          <span class="pill ${j.state}">${STATE_LABEL[j.state]}</span>
+        </span>
+        <span class="home-meta">${meta.map((m) => `<span>${m}</span>`).join('')}</span>
+      </button>
+      <div class="home-body">${body}</div>
+    </article>`;
+  }
+
+  function renderHomes() {
+    const rep = current.reports[range];
+    const order = { stalled:0, unscoped:1, active:2, complete:3 };
+    const jobs = rep.jobs.slice().sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+    $('homes').innerHTML = jobs.map(homeRow).join('');
+    $('homes').querySelectorAll('.home-top').forEach((b) => {
+      b.onclick = () => b.parentElement.classList.toggle('open');
+    });
+  }
+
+  function renderAll() {
+    const rep = current.reports[range];
+    $('vName').textContent = current.name;
+    $('vSub').textContent = `${current.homes} home${current.homes === 1 ? '' : 's'} · `
+      + (current.lastActivityLabel ? `last work finished ${current.lastActivityLabel}` : 'no work finished yet')
+      + ' · ' + (current.nextScheduledLabel ? `next booked ${current.nextScheduledLabel}` : 'nothing booked');
+    renderRail(); renderKpis(); renderHomes();
+    $('rLabel').textContent = `${current.name} — ${DATA.ranges.find((r) => r.key === range).range}`;
+    void rep;
+  }
+
+  // ---- the exportable report: only real, reportable homes ----
+  function buildPaper() {
+    const rep = current.reports[range];
+    const label = DATA.ranges.find((r) => r.key === range).range;
+    const shown = rep.jobs.filter((j) => j.state !== 'unscoped');
+    const rows = shown.map((j) => {
+      const done = j.completed.length
+        ? `<div class="grp"><h4 class="done">Completed</h4><ul>${
+            j.completed.map((c) => `<li><span>${esc(c.name)}</span><em>${esc(c.dateLabel)}</em></li>`).join('')}</ul></div>`
+        : `<div class="empty">No tasks were completed on this home this period.</div>`;
+      const todo = j.pending.length
+        ? `<div class="grp"><h4>Still to do</h4><ul>${
+            j.pending.map((p) => `<li><span>${esc(p.name)}</span><em class="${p.tone}-t">${esc(p.status)}</em></li>`).join('')}</ul></div>`
+        : `<div class="empty">All scheduled work on this home is complete.</div>`;
+      return `<div class="p-job"><h3>${esc(j.name)}</h3>
+        <p class="p-addr">${esc(j.address)}</p>
+        <div class="p-prog"><span class="meter"><i style="width:${j.progress.pct}%"></i></span>
+          <span class="frac mono">${j.progress.done} of ${j.progress.total} steps</span></div>
+        ${done}${todo}</div>`;
+    }).join('');
+
+    const n = shown.length;
+    const c = shown.reduce((a, j) => a + j.completed.length, 0);
+    $('paper').innerHTML = `<p class="p-brand">Dragon Transport</p>
+      <h2 class="p-title">Progress Report</h2>
+      <p class="p-dates">${esc(current.name)} · ${esc(label)}</p>
+      <p class="p-count"><strong>${n} home${n === 1 ? '' : 's'}</strong> · ${c} task${c === 1 ? '' : 's'} completed this period</p>
+      ${rows}
+      <p class="p-foot">Questions on any home above? Reply to this email or call the office.</p>`;
+  }
+
+  $('range').onchange = (e) => { range = e.target.value; renderAll(); };
+  $('createBtn').onclick = () => { buildPaper(); document.body.classList.add('showing-report'); window.scrollTo(0, 0); };
+  $('backBtn').onclick = () => document.body.classList.remove('showing-report');
+  $('printBtn').onclick = () => window.print();
+  $('copyBtn').onclick = async () => {
+    const html = $('paper').innerHTML;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([$('paper').innerText], { type: 'text/plain' }),
+      })]);
+      $('copyBtn').textContent = 'Copied';
+    } catch {
+      const r = document.createRange(); r.selectNode($('paper'));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      $('copyBtn').textContent = 'Selected — press Ctrl/Cmd+C';
+    }
+    setTimeout(() => { $('copyBtn').textContent = 'Copy for email'; }, 2600);
+  };
+
+  renderAll();
+})();
+</script>
