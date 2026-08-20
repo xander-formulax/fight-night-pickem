@@ -168,7 +168,12 @@ app.use('/api', api);
 app.get('/vendor/monday-sdk.js', (_req, res) =>
   res.sendFile(fileURLToPath(new URL('../node_modules/monday-sdk-js/dist/main.js', import.meta.url))));
 
-app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
+// no-cache: the browser must revalidate index.html and app.js on every load,
+// otherwise an iframe can keep serving last deploy's script under this
+// deploy's page — buttons render but their handlers are missing.
+app.use(express.static(fileURLToPath(new URL('../public', import.meta.url)), {
+  setHeaders(res) { res.setHeader('Cache-Control', 'no-cache'); },
+}));
 
 app.use((err, _req, res, _next) => {
   console.error(err);
