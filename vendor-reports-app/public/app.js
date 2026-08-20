@@ -168,6 +168,91 @@
     }
   }
 
+  // ---- email: settings dialog --------------------------------------------
+  const msg = (id, text, cls) => { const el = $(id); el.textContent = text || ''; el.className = `dlg-msg ${cls || ''}`; };
+
+  async function openSettings() {
+    msg('settingsMsg', '');
+    $('settingsOverlay').classList.add('open');
+    $('settingsStatus').textContent = 'Checking…';
+    try {
+      const st = await api('/api/settings');
+      $('settingsStatus').innerHTML = st.connected
+        ? `Currently sending as <b>${st.address.replace(/[<>&]/g, '')}</b>`
+        : 'No sending account connected yet.';
+      $('setAddress').value = st.address || '';
+    } catch (err) {
+      $('settingsStatus').textContent = err.message;
+    }
+    $('setPassword').value = '';
+  }
+
+  $('settingsBtn').onclick = openSettings;
+  $('settingsClose').onclick = () => $('settingsOverlay').classList.remove('open');
+
+  $('settingsSave').onclick = async () => {
+    msg('settingsMsg', 'Verifying with Gmail…');
+    try {
+      const st = await api('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: $('setAddress').value, appPassword: $('setPassword').value }),
+      });
+      msg('settingsMsg', 'Connected. Gmail accepted the sign-in.', 'ok');
+      $('settingsStatus').innerHTML = `Currently sending as <b>${st.address.replace(/[<>&]/g, '')}</b>`;
+      $('setPassword').value = '';
+    } catch (err) { msg('settingsMsg', err.message, 'err'); }
+  };
+
+  $('settingsTest').onclick = async () => {
+    msg('settingsMsg', 'Sending test email…');
+    try {
+      await api('/api/settings/test', { method: 'POST' });
+      msg('settingsMsg', 'Test sent — check the inbox of the sending account.', 'ok');
+    } catch (err) { msg('settingsMsg', err.message, 'err'); }
+  };
+
+  $('settingsDisconnect').onclick = async () => {
+    try {
+      await api('/api/settings', { method: 'DELETE' });
+      $('settingsStatus').textContent = 'No sending account connected yet.';
+      $('setAddress').value = ''; $('setPassword').value = '';
+      msg('settingsMsg', 'Disconnected.', 'ok');
+    } catch (err) { msg('settingsMsg', err.message, 'err'); }
+  };
+
+  // ---- email: send the open report ---------------------------------------
+  const lastRecipients = {}; // per-vendor, per session
+
+  $('sendBtn').onclick = () => {
+    if (!current) return;
+    const period = DATA.ranges.find((r) => r.key === range);
+    $('sendTitle').textContent = `Send — ${current.name}`;
+    $('sendSub').textContent = `${period.range}. The email is rebuilt from the boards on send; unscoped homes are left out.`;
+    $('sendTo').value = lastRecipients[current.id] || '';
+    msg('sendMsg', '');
+    $('sendOverlay').classList.add('open');
+    $('sendTo').focus();
+  };
+  $('sendClose').onclick = () => $('sendOverlay').classList.remove('open');
+
+  $('sendGo').onclick = async () => {
+    const btn = $('sendGo');
+    btn.disabled = true;
+    msg('sendMsg', 'Sending…');
+    try {
+      const out = await api('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendorId: current.id, periodKey: range, to: $('sendTo').value }),
+      });
+      lastRecipients[current.id] = $('sendTo').value;
+      msg('sendMsg', `Sent to ${out.to.join(', ')} from ${out.from}.`, 'ok');
+      setTimeout(() => $('sendOverlay').classList.remove('open'), 1800);
+    } catch (err) { msg('sendMsg', err.message, 'err'); }
+    btn.disabled = false;
+  };
+
   $('range').onchange = (e) => { range = e.target.value; renderAll(); };
   $('refreshBtn').onclick = () => load(true);
   $('createBtn').onclick = () => { buildPaper(); document.body.classList.add('showing-report'); window.scrollTo(0, 0); };

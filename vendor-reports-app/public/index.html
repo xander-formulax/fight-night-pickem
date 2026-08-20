@@ -215,6 +215,7 @@
   <p class="brand">Dragon Transport<span>Vendor Reporting Centre</span></p>
   <span class="bar-note mono" id="stamp"></span>
   <button class="btn" id="refreshBtn" style="padding:6px 11px;font-size:13px">Refresh</button>
+  <button class="btn" id="settingsBtn" style="padding:6px 11px;font-size:13px">Settings</button>
 </div>
 
 <div class="shell">
@@ -241,6 +242,7 @@
     <button class="btn" id="backBtn">&larr; Back</button>
     <span class="mono" style="font-size:11.5px;color:var(--ink-faint)" id="rLabel"></span>
     <span class="spacer"></span>
+    <button class="btn primary" id="sendBtn">Send by email&hellip;</button>
     <button class="btn" id="copyBtn">Copy for email</button>
     <button class="btn primary" id="printBtn">Export as PDF</button>
   </div>
@@ -248,6 +250,59 @@
   <p class="note">Export as PDF opens your browser's print dialogue — choose &ldquo;Save as PDF&rdquo;. Copy for email puts the formatted report on your clipboard to paste into Gmail or Outlook.</p>
 </div>
 
+
+<div class="overlay" id="settingsOverlay">
+  <div class="dialog">
+    <h2>Sending account</h2>
+    <p class="dlg-sub">Reports are emailed through this Gmail account — exactly as if that person pressed Send. Use a Gmail <strong>App&nbsp;Password</strong> (Google Account &rarr; Security &rarr; 2-Step Verification &rarr; App passwords), never the real account password.</p>
+    <p class="dlg-status" id="settingsStatus"></p>
+    <label class="dlg-label" for="setAddress">Gmail address</label>
+    <input class="dlg-input" id="setAddress" type="email" placeholder="office@gmail.com" autocomplete="off">
+    <label class="dlg-label" for="setPassword">App Password</label>
+    <input class="dlg-input" id="setPassword" type="password" placeholder="16-character app password" autocomplete="off">
+    <p class="dlg-msg" id="settingsMsg"></p>
+    <div class="dlg-row">
+      <button class="btn" id="settingsClose">Close</button>
+      <span class="spacer"></span>
+      <button class="btn" id="settingsDisconnect">Disconnect</button>
+      <button class="btn" id="settingsTest">Send test email</button>
+      <button class="btn primary" id="settingsSave">Save &amp; verify</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="sendOverlay">
+  <div class="dialog">
+    <h2 id="sendTitle">Send report</h2>
+    <p class="dlg-sub" id="sendSub"></p>
+    <label class="dlg-label" for="sendTo">To (separate several with ;)</label>
+    <input class="dlg-input" id="sendTo" type="text" placeholder="name@dealership.com" autocomplete="off">
+    <p class="dlg-msg" id="sendMsg"></p>
+    <div class="dlg-row">
+      <button class="btn" id="sendClose">Cancel</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="sendGo">Send</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .overlay { display:none; position:fixed; inset:0; background:rgba(25,31,33,.45); z-index:50; align-items:center; justify-content:center; padding:18px; }
+  .overlay.open { display:flex; }
+  .dialog { background:var(--surface); border:1px solid var(--rule-firm); border-radius:4px; box-shadow:var(--shadow); padding:24px 26px; width:100%; max-width:480px; }
+  .dialog h2 { font-family:Archivo,sans-serif; font-weight:600; font-size:1.25rem; margin:0 0 8px; letter-spacing:-.01em; }
+  .dlg-sub { font-size:13.5px; color:var(--ink-soft); margin:0 0 14px; }
+  .dlg-status { font-family:"IBM Plex Mono",monospace; font-size:12px; margin:0 0 14px; color:var(--ink-soft); }
+  .dlg-status b { color:var(--accent); font-weight:600; }
+  .dlg-label { display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin:0 0 4px; }
+  .dlg-input { width:100%; font:inherit; font-size:14px; padding:9px 12px; border:1px solid var(--rule-firm); border-radius:3px; background:var(--surface); color:var(--ink); margin:0 0 12px; }
+  .dlg-input:focus { outline:2px solid var(--accent); outline-offset:0; border-color:var(--accent); }
+  .dlg-msg { font-size:13px; margin:0 0 12px; min-height:1.2em; }
+  .dlg-msg.err { color:var(--crit); }
+  .dlg-msg.ok { color:var(--accent); }
+  .dlg-row { display:flex; gap:8px; align-items:center; }
+  .dlg-row .spacer { margin-left:auto; }
+</style>
 
 <script src="/vendor/monday-sdk.js"></script>
 <script src="/app.js"></script>

@@ -20,5 +20,6 @@ export const config = {
   // is historical; the value stored in it must be the Client Secret.
   get clientSecret() { return readConfig('MONDAY_SIGNING_SECRET'); },
   get completedGraceDays() { return Number(readConfig('COMPLETED_GRACE_DAYS', '14')); },
+  get officePhone() { return readConfig('OFFICE_PHONE', ''); },
   get port() { return Number(readConfig('PORT', '8080')); },
 };

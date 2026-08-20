@@ -17,6 +17,7 @@
     "@mondaycom/apps-sdk": "^3.0.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "monday-sdk-js": "^0.5.6"
+    "monday-sdk-js": "^0.5.6",
+    "nodemailer": "^9.0.5"
   }
 }
