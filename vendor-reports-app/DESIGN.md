@@ -86,7 +86,7 @@ all typed by the office, all already visible on the board.
 
 | Board | ID | Items | Role |
 | --- | --- | --- | --- |
-| Vendors | `18409503080` | 166 | The customers. `deal_contact` → Jobs. |
+| Vendors | `18409503080` | 166 | The customers. `contact_deal` → Jobs. |
 | Jobs | `18409503078` | 141 | One item per home, named for the homeowner. `deal_contact` → Vendors ("Bill to"). |
 | Tasks | `18409523534` | 576 | The work. Status, Schedule, Finished Date. Links to a Job via one relation per phase. |
 
@@ -120,6 +120,18 @@ denominator of the progress bar; task status drives the numerator.
 
 ### Task columns read
 
+### Job columns read
+
+| Column | ID |
+| --- | --- |
+| Job Address | `text_mm4bqpy1` |
+| Bill to (→ Vendors) | `deal_contact` |
+| Job Finish Date | `date_mm45gy0s` |
+
+Groups: `topics` = Active Jobs, `closed` = Completed, `group_mm31702c` = Bids.
+
+### Task columns read
+
 | Column | ID | Use |
 | --- | --- | --- |
 | Status | `color_mm2v7xnr` | `Not done` / `Working on it` / `Waiting` / `Done` / `Invoiced` |
@@ -150,7 +162,11 @@ visibly lands rather than silently disappearing).
 
 ### Section A — Completed this week
 Every in-scope task whose **Finished Date falls inside the report week**.
-Line format, fixed: `{Task name} — {Day, Mon D}`
+Line format, fixed: `{Phase name} — {Day, Mon D}`
+
+> The **phase name**, not the task name, is the customer-facing label. It is always
+> present (even where no task exists yet) and avoids leaking whatever internal
+> naming convention the office uses on Tasks.
 
 If the list is empty the section is replaced by exactly one templated line:
 `No tasks were completed on this home this week.`
@@ -167,8 +183,9 @@ resolved in this order:
 | Schedule start date is set | `Scheduled {Day, Mon D}` |
 | otherwise | `Not yet scheduled` |
 
-Sorted by scheduled date first (soonest first), then unscheduled, then the phase's natural
-build order.
+Sorted by how immediate the work is — **in progress, then booked (soonest first), then on
+hold, then not yet booked** — with build order breaking ties. Work happening right now is
+what the vendor most wants to see, so it leads; unscheduled work sinks to the bottom.
 
 If the list is empty the section is replaced by exactly one templated line:
 `All scheduled work on this home is complete.`
