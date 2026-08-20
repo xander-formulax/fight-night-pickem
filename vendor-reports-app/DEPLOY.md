@@ -1,5 +1,58 @@
 # Getting the reporting centre into the monday account
 
+## Before you start
+
+You need three things on your computer:
+
+| | Check it with | If missing |
+| --- | --- | --- |
+| **Node.js 20+** | `node --version` | nodejs.org → the green **LTS** button |
+| **Git** | `git --version` | git-scm.com, or install GitHub Desktop |
+| **The project folder** | see below | clone it — step 0 |
+
+### Step 0 — get the code onto your computer
+
+The app lives on a branch of your `fight-night-pickem` repo. Easiest way is
+**GitHub Desktop** (desktop.github.com):
+
+1. **File → Clone repository** → pick `xander-formulax/fight-night-pickem`.
+2. Note the folder it saves to — usually `C:\Users\<you>\Documents\GitHub\fight-night-pickem`.
+3. Use the **Current Branch** dropdown at the top to switch to
+   `claude/vendor-reports-app-design-xs0s9w`.
+
+The app is the `vendor-reports-app` folder inside it. **Every `mapps` command
+below must be run from inside that folder**, not from `C:\WINDOWS\system32`.
+
+To get there in PowerShell, type `cd ` (with a space) and then drag the
+`vendor-reports-app` folder onto the PowerShell window — it fills in the path.
+Press Enter. Check you're in the right place:
+
+```powershell
+dir
+```
+
+You should see `package.json`, `src`, and `public` listed.
+
+---
+
+## Windows notes
+
+**Deprecation warnings are normal.** `npm warn deprecated ...` in yellow is not
+an error. Only lines starting with `npm ERR!` are.
+
+**If `mapps` says scripts are disabled**, PowerShell is blocking the tool. Run
+this once, answer `Y`, then try again:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+**If `mapps` says "not recognized"** after a successful install, close
+PowerShell completely and open a new window — the PATH only refreshes on a new
+session.
+
+---
+
 Follow these in order. Steps 1–7 are one-time setup; after that, shipping a
 change is just step 8 again.
 
@@ -16,16 +69,23 @@ Never paste either into a chat, an email, or a commit.
 
 ## 1. Install the deploy tool
 
-```bash
+```powershell
 npm install -g @mondaycom/apps-cli
+```
+
+Wait for the prompt to come back. Yellow `deprecated` warnings along the way
+are fine. Then check it worked:
+
+```powershell
 mapps help
 ```
 
-If `mapps help` prints a list of commands, it worked.
+If that prints a list of commands, you're good. If it errors, see **Windows
+notes** above.
 
 ## 2. Log the tool into your account
 
-```bash
+```powershell
 mapps init -t <YOUR_API_TOKEN>
 ```
 
@@ -53,7 +113,7 @@ fail with "access denied" until you do.
 
 Then, from inside the `vendor-reports-app` folder:
 
-```bash
+```powershell
 mapps code:push -i <APP_VERSION_ID>
 ```
 
@@ -65,7 +125,7 @@ build takes a few minutes. **Copy that URL.**
 Either in the Developer Center under **Host on monday → Server-side code →
 Secrets**, or from the terminal:
 
-```bash
+```powershell
 mapps code:secret -m set -k MONDAY_API_TOKEN     -v <YOUR_API_TOKEN>
 mapps code:secret -m set -k MONDAY_SIGNING_SECRET -v <SIGNING_SECRET>
 ```
@@ -91,7 +151,7 @@ You should see the vendor list load.
 
 ## 8. Shipping a change later
 
-```bash
+```powershell
 mapps code:push -i <APP_VERSION_ID>
 ```
 
@@ -109,10 +169,13 @@ That's the whole loop. Secrets and the feature configuration stay as they are.
 | "MONDAY_API_TOKEN is not configured" | Step 6 was skipped, or the secret was set on a different app version. |
 | Every vendor list is empty | No jobs have a **Bill to** vendor set. See the data notes in README.md. |
 | Build fails immediately | Check that `npm start` runs locally first. monday builds with the same `package.json`. |
+| `mapps` not recognized | Close PowerShell and open a new window. |
+| "running scripts is disabled" | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, answer Y. |
+| `ENOENT package.json` on push | You're in the wrong folder. `cd` into `vendor-reports-app` first. |
 
 ## Before you deploy — check it locally
 
-```bash
+```powershell
 npm install
 npm test        # 16 tests, the report rules
 npm run demo    # http://localhost:8080, real board snapshot, no token needed
