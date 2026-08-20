@@ -22,19 +22,22 @@ for the shareable version.
 | `src/monday.js` | GraphQL reads (columns only, never Updates) |
 | `src/readiness.js` | The gate that refuses to send a misleading report |
 | `src/run.js` | One weekly run: build, gate, send, record |
-| `src/index.js` | Express server + the `/mndy-cronjob` endpoint |
+| `src/centre.js` | One load: every vendor, every period |
+| `src/index.js` | Express server, API, and static frontend |
+| `public/` | The reporting centre UI. No build step — plain HTML and JS. |
+| `scripts/demo.js` | Runs the UI against a recorded snapshot, no token needed |
 
 ## Running locally
 
 ```bash
 npm install
 npm test                 # the rules, as tests
-node test/preview.js     # renders sample-email.html from a fixture, sends nothing
-npm start
+npm run demo             # the UI on a recorded snapshot — no token needed
+npm start                # the real thing — needs MONDAY_API_TOKEN
 ```
 
-Nothing can be sent by accident: `EMAIL_DRIVER` defaults to `console`, and the
-run refuses to start without `MONDAY_API_TOKEN`.
+Nothing can be sent by accident — the app has no send path at all. It reads
+boards, renders reports, and the user exports them.
 
 ## Configuration
 
@@ -42,12 +45,10 @@ Set on monday-code with `mapps code:secret`, or as env vars locally.
 
 | Key | Purpose |
 | --- | --- |
-| `MONDAY_API_TOKEN` | API token for reading boards and writing Last Report Sent |
-| `MONDAY_SIGNING_SECRET` | App signing secret, for verifying session tokens |
-| `EMAIL_API_KEY` | Provider API key |
-| `OFFICE_PHONE` | Shown in the email footer |
+| `MONDAY_API_TOKEN` | Reads the boards. Required. |
+| `MONDAY_SIGNING_SECRET` | Verifies that requests came from monday. Required. |
 | `COMPLETED_GRACE_DAYS` | How long a finished home keeps appearing (default 14) |
-| `VENDOR_ENABLED_COLUMN` | Vendors column id — see below |
+| `PORT` | Set by monday-code automatically |
 
 ### No monday changes required
 
@@ -55,8 +56,10 @@ The earlier auto-sending design needed three columns on Vendors. Manual export n
 
 ## Deploying
 
+See [DEPLOY.md](./DEPLOY.md) for the full walkthrough. Once set up:
+
 ```bash
-mapps code:push
+mapps code:push -i <APP_VERSION_ID>
 ```
 
 ## Data quality notes

@@ -21,15 +21,6 @@ export const JOB_GROUPS = {
   bids: 'group_mm31702c',
 };
 
-// Config columns on Vendors. These do not exist yet — create them, then set
-// the ids here (or via env). Readiness reports any that are still missing.
-export const VENDOR_COLUMNS = {
-  recipients: process.env.VENDOR_RECIPIENTS_COLUMN || '',
-  enabled: process.env.VENDOR_ENABLED_COLUMN || '',
-  lastSent: process.env.VENDOR_LAST_SENT_COLUMN || '',
-  billingEmail: 'contact_email',
-};
-
 export async function mondayFetch(query, variables, token) {
   const res = await fetch(API, {
     method: 'POST',
@@ -184,25 +175,9 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
     }];
   }));
 
-  const vendorCols = [VENDOR_COLUMNS.billingEmail, VENDOR_COLUMNS.recipients,
-    VENDOR_COLUMNS.enabled, VENDOR_COLUMNS.lastSent].filter(Boolean);
+  const rawVendors = await fetchItemsByIds({ ids: [...vendorIds], columnIds: [], token });
 
-  const rawVendors = await fetchItemsByIds({ ids: [...vendorIds], columnIds: vendorCols, token });
-
-  const vendorsById = new Map(rawVendors.map((raw) => {
-    const cols = byId(raw);
-    const recipientsRaw = VENDOR_COLUMNS.recipients ? cols[VENDOR_COLUMNS.recipients]?.text : '';
-    return [raw.id, {
-      id: raw.id,
-      name: raw.name,
-      recipients: splitRecipients(recipientsRaw),
-      billingEmail: cols[VENDOR_COLUMNS.billingEmail]?.text || '',
-      enabled: VENDOR_COLUMNS.enabled
-        ? (cols[VENDOR_COLUMNS.enabled]?.label || cols[VENDOR_COLUMNS.enabled]?.text) === 'On'
-        : false,
-      lastSent: VENDOR_COLUMNS.lastSent ? cols[VENDOR_COLUMNS.lastSent]?.date || null : null,
-    }];
-  }));
+  const vendorsById = new Map(rawVendors.map((raw) => [raw.id, { id: raw.id, name: raw.name }]));
 
   const jobsByVendorId = new Map();
   const orphanJobs = [];
@@ -215,24 +190,3 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
   return { vendorsById, jobsByVendorId, tasksById, orphanJobs, totalJobs: jobs.length };
 }
 
-export function splitRecipients(text) {
-  return String(text || '')
-    .split(/[;,]/)
-    .map((s) => s.trim())
-    .filter((s) => s.includes('@'));
-}
-
-/** Write the send date back so the office sees it without opening the app. */
-export async function markSent({ vendorId, date, token }) {
-  if (!VENDOR_COLUMNS.lastSent) return;
-  const mutation = `
-    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
-    }`;
-  await mondayFetch(mutation, {
-    boardId: String(BOARDS.vendors),
-    itemId: String(vendorId),
-    columnId: VENDOR_COLUMNS.lastSent,
-    value: JSON.stringify({ date }),
-  }, token);
-}

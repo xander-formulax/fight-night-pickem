@@ -16,12 +16,6 @@ export function readConfig(key, fallback = undefined) {
 export const config = {
   get mondayToken() { return readConfig('MONDAY_API_TOKEN'); },
   get clientSecret() { return readConfig('MONDAY_SIGNING_SECRET'); },
-  get emailDriver() { return readConfig('EMAIL_DRIVER', 'console'); },
-  get emailApiKey() { return readConfig('EMAIL_API_KEY'); },
-  get emailFrom() { return readConfig('EMAIL_FROM', 'reports@dragontransport.com'); },
-  get officePhone() { return readConfig('OFFICE_PHONE', '(432) 555-0148'); },
-  // Every send is redirected here when set. Use it for dry runs.
-  get redirectTo() { return readConfig('REDIRECT_ALL_EMAIL_TO'); },
   get completedGraceDays() { return Number(readConfig('COMPLETED_GRACE_DAYS', '14')); },
   get port() { return Number(readConfig('PORT', '8080')); },
 };

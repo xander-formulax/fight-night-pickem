@@ -22,9 +22,9 @@ no AI, no Updates, no notes.
 ```
               monday-code (Node, 512 MiB, 1 vCPU)
    ┌──────────────────────────────────────────────────┐
-   │  GET /api/vendors        ┐                       │
-   │  GET /api/vendor/:id     ├─ Custom Object UI     │
-   │  GET /api/report/:id     ┘   (React, in monday)  │
+   │  GET  /api/centre        ┐                       │
+   │  POST /api/refresh       ├─ Object feature UI    │
+   │  GET  /  (static)        ┘   (plain HTML/JS)     │
    │        │                                         │
    │        ▼                                         │
    │   loadReportData()  ── monday GraphQL ──▶ Jobs   │
@@ -47,6 +47,8 @@ no AI, no Updates, no notes.
 | **Export in the browser, not on the server** | `window.print()` → "Save as PDF" needs no library. Server-side PDF (headless Chrome) would not fit comfortably in 512 MiB, and would add a dependency for something the browser already does well. |
 | **Copy for email** | Puts the formatted report on the clipboard as rich text, ready to paste into Gmail or Outlook. This is the fastest manual-send path and needs no email infrastructure at all. |
 | **No stored state** | Nothing is scheduled, nothing is sent, so there is nothing to record. No Storage, no idempotency keys, no send log. |
+| **No build step** | The UI is plain HTML and JS served from `public/`. No React, no bundler, no toolchain to keep working — which matters when the person maintaining this is not a full-time developer. |
+| **One load, cached 60s** | A single pass over the boards builds every vendor and every period, so clicking between vendors is instant and monday is not hammered. |
 
 ### What the rescope removed
 
