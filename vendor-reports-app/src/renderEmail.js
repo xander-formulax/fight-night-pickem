@@ -22,16 +22,22 @@ const esc = (s) =>
 const TONE = { active: GREEN, hold: AMBER, unscheduled: FAINT, scheduled: SOFT };
 
 function progressBar({ done, total, pct }) {
+  const TRACK = 148;
+  // a started home always shows at least a visible sliver
+  const fill = pct <= 0 ? 0 : Math.max(8, Math.round((TRACK * Math.min(pct, 100)) / 100));
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px">
       <tr>
-        <td width="148" style="padding-right:12px">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="148" style="background:${WELL};border-radius:4px">
-            <tr><td height="7" width="${Math.max(pct, 0)}%" style="background:${GREEN};border-radius:4px;font-size:0;line-height:0">&nbsp;</td>
-                <td height="7" style="font-size:0;line-height:0">&nbsp;</td></tr>
+        <td width="${TRACK}" style="width:${TRACK}px;padding:0">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${TRACK}" style="width:${TRACK}px">
+            <tr><td style="background:#DCE2DA;border-radius:4px;height:8px;line-height:8px;font-size:1px;padding:0;mso-line-height-rule:exactly">${
+              fill > 0
+                ? `<div style="width:${fill}px;max-width:${TRACK}px;height:8px;line-height:8px;font-size:1px;background:${GREEN};border-radius:4px">&#8202;</div>`
+                : '&#8202;'
+            }</td></tr>
           </table>
         </td>
-        <td style="font:500 12.5px ${FONT};color:${SOFT};white-space:nowrap">${done} of ${total} steps</td>
+        <td style="padding-left:12px;font:500 12.5px ${FONT};color:${SOFT};white-space:nowrap">${done} of ${total} steps</td>
       </tr>
     </table>`;
 }
@@ -39,7 +45,7 @@ function progressBar({ done, total, pct }) {
 function line(left, right, colour) {
   return `
       <tr>
-        <td style="font:400 14.5px ${FONT};color:${INK};padding:0 0 5px;border-bottom:1px solid ${RULE}">${esc(left)}</td>
+        <td style="font:400 14.5px ${FONT};color:${INK};padding:0 14px 5px 0;border-bottom:1px solid ${RULE}">${esc(left)}</td>
         <td align="right" style="font:500 12px ${FONT};color:${colour};padding:0 0 5px;border-bottom:1px solid ${RULE};white-space:nowrap">${esc(right)}</td>
       </tr>`;
 }
@@ -93,8 +99,7 @@ export function renderEmail(report, rangeLabel, { officePhone = '' } = {}) {
     <tr><td align="center" style="padding:24px 12px">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#FFFFFF;border:1px solid ${RULE};border-radius:4px">
         <tr><td style="padding:30px 28px 34px">
-          <p style="margin:0 0 3px;font:700 13px ${FONT};letter-spacing:1.6px;text-transform:uppercase;color:${GREEN}">Dragon Transport</p>
-          <h1 style="margin:0 0 3px;font:600 24px ${FONT};color:${INK};letter-spacing:-.4px">Progress Report</h1>
+          <h1 style="margin:0 0 4px;font:700 23px ${FONT};color:${INK};letter-spacing:-.3px">Progress Report from <span style="color:${GREEN}">Dragon Transports</span>!</h1>
           <p style="margin:0 0 18px;font:400 13.5px ${FONT};color:${SOFT}">${esc(report.vendor.name)} · ${esc(rangeLabel)}</p>
           <p style="margin:0 0 8px;padding:11px 15px;background:${WELL};border-radius:3px;font:400 14px ${FONT};color:${INK}"><strong>${homes}</strong> · ${tasks}</p>
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
