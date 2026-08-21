@@ -113,6 +113,6 @@ export function renderEmail(report, rangeLabel, { officePhone = '' } = {}) {
 </body></html>`;
 }
 
-export function renderSubject(report, rangeLabel) {
-  return `${report.vendor.name} — progress report, ${rangeLabel}`;
+export function renderSubject(_report, _rangeLabel) {
+  return 'Progress Report from Dragon Transports!';
 }

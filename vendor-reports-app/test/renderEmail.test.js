@@ -27,9 +27,9 @@ test('names are escaped', () => {
   assert.ok(!html.includes('Titan <Midland>'));
 });
 
-test('subject carries vendor and range', () => {
+test('subject matches the email header', () => {
   assert.equal(renderSubject(report, 'August 17-23, 2026'),
-    'Titan <Midland> — progress report, August 17-23, 2026');
+    'Progress Report from Dragon Transports!');
 });
 
 test('internal triage labels never reach the email', () => {
