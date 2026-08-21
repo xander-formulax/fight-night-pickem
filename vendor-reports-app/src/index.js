@@ -2,6 +2,8 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { loadCentre, periodsFor } from './centre.js';
+import { markVendorSent } from './monday.js';
+import { todayInChicago } from './week.js';
 import { verifySessionToken } from './auth.js';
 import { probeGmailSmtp } from './probe.js';
 import { getEmailSettings, setEmailSettings, clearEmailSettings, publicView } from './emailSettings.js';
@@ -27,6 +29,16 @@ async function centre() {
   const value = await loadCentre();
   cache = { at: Date.now(), value };
   return value;
+}
+
+// Best-effort write-back of Last Report Sent; a board hiccup must never
+// turn a successfully sent email into a reported failure.
+async function recordSent(vendorId) {
+  try {
+    await markVendorSent({ vendorId, date: todayInChicago(), token: config.mondayToken });
+  } catch (err) {
+    console.error(`could not write Last Report Sent for ${vendorId}:`, err.message);
+  }
 }
 
 const api = express.Router();
@@ -117,6 +129,7 @@ api.post('/send-all', async (req, res, next) => {
           html: renderEmail(report, period.range, { officePhone: config.officePhone }),
         });
         results.push({ vendorId: id, name: vendor.name, status: 'sent', to: vendor.recipients });
+        await recordSent(id);
       } catch (err) {
         results.push({ vendorId: id, name: vendor.name, status: 'failed', error: err.message });
       }
@@ -124,6 +137,7 @@ api.post('/send-all', async (req, res, next) => {
 
     const tally = results.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), {});
     console.log('send-all:', JSON.stringify(tally));
+    cache = null; // next load shows the new Last Report Sent dates
     res.json({ ok: true, from: settings.address, period: period.range, tally, results });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -156,6 +170,8 @@ api.post('/send', async (req, res, next) => {
       html: renderEmail(report, period.range, { officePhone: config.officePhone }),
     });
     console.log(`report sent: ${vendor.name} (${periodKey}) -> ${recipients.join(', ')}`);
+    await recordSent(vendor.id);
+    cache = null; // next load shows the new Last Report Sent
     res.json({ ok: true, to: recipients, from: settings.address, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });

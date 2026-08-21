@@ -116,7 +116,8 @@
     $('vName').textContent = current.name;
     $('vSub').textContent = `${plural(current.homes, 'home')} · `
       + (current.lastActivityLabel ? `last work finished ${current.lastActivityLabel}` : 'no work finished yet')
-      + ' · ' + (current.nextScheduledLabel ? `next booked ${current.nextScheduledLabel}` : 'nothing booked');
+      + ' · ' + (current.nextScheduledLabel ? `next booked ${current.nextScheduledLabel}` : 'nothing booked')
+      + ' · ' + (current.lastSentLabel ? `report last sent ${current.lastSentLabel}` : 'no report sent yet');
     renderRail(); renderKpis(); renderHomes();
     $('rLabel').textContent = `${current.name} — ${DATA.ranges.find((r) => r.key === range).range}`;
   }
@@ -268,7 +269,7 @@
       <label class="sa-row ${sendable && hasEmail ? '' : 'off'}">
         <input type="checkbox" data-id="${v.id}" ${on ? 'checked' : ''} ${sendable && hasEmail ? '' : 'disabled'}>
         <span class="sa-name">${esc(v.name)}</span>
-        <span class="sa-homes">${plural(v.homes, 'home')}</span>
+        <span class="sa-homes">${plural(v.homes, 'home')}${v.lastSentLabel ? ` · last sent ${esc(v.lastSentLabel)}` : ' · never sent'}</span>
         <span class="sa-mail ${hasEmail ? '' : 'missing'}">${
           hasEmail ? esc(v.recipients.join('; '))
           : !sendable ? 'nothing to report this period'
@@ -282,16 +283,30 @@
     $('sendAllSub').textContent = `${period.range}. Everyone below gets their own report, sent to the address on the Vendors board. Untick anyone who should sit this one out.`;
     renderSendAll(sendAllRows());
     msg('sendAllMsg', '');
-    $('sendAllGo').disabled = false;
+    setBusy(false);
     $('sendAllOverlay').classList.add('open');
   };
   $('sendAllClose').onclick = () => $('sendAllOverlay').classList.remove('open');
 
+  let sending = false;
+
+  function setBusy(on, text) {
+    const busy = $('sendAllBusy');
+    busy.classList.toggle('on', on);
+    busy.classList.remove('done');
+    if (text) $('sendAllBusyText').innerHTML = text;
+    $('sendAllGo').disabled = on;
+    $('sendAllClose').disabled = on;
+    if (on) $('sendAllList').querySelectorAll('input').forEach((el) => { el.disabled = true; });
+  }
+
   $('sendAllGo').onclick = async () => {
+    if (sending) return;
     const ids = [...$('sendAllList').querySelectorAll('input:checked')].map((el) => el.dataset.id);
     if (!ids.length) { msg('sendAllMsg', 'Nobody is selected.', 'err'); return; }
-    $('sendAllGo').disabled = true;
-    msg('sendAllMsg', `Sending ${ids.length} report${ids.length === 1 ? '' : 's'}… this can take a minute.`);
+    sending = true;
+    msg('sendAllMsg', '');
+    setBusy(true, `Sending ${ids.length} report${ids.length === 1 ? '' : 's'}&hellip;`);
     try {
       const out = await api('/api/send-all', {
         method: 'POST',
@@ -305,11 +320,30 @@
         el.textContent = r.status === 'sent' ? `sent to ${r.to.join('; ')}` : `${r.status}: ${r.error}`;
       }
       const t = out.tally;
-      msg('sendAllMsg', `Done — ${t.sent || 0} sent${t.skipped ? `, ${t.skipped} skipped` : ''}${t.failed ? `, ${t.failed} FAILED` : ''}, from ${out.from}.`, t.failed ? 'err' : 'ok');
+      const busy = $('sendAllBusy');
+      busy.classList.add('done');
+      $('sendAllBusyText').textContent = t.failed
+        ? `${t.sent || 0} sent, ${t.failed} failed`
+        : `Completed — ${t.sent || 0} sent`;
+      busy.querySelector('.busy-note').textContent = t.failed
+        ? 'Some sends failed — details below.'
+        : `All reports delivered from ${out.from}.`;
+      if (t.failed) {
+        // fade the curtain so the per-vendor failures can be read
+        setTimeout(() => { busy.classList.remove('on'); $('sendAllClose').disabled = false; }, 1600);
+        msg('sendAllMsg', `${t.sent || 0} sent, ${t.skipped || 0} skipped, ${t.failed} FAILED — see each row above.`, 'err');
+      } else {
+        setTimeout(() => {
+          $('sendAllOverlay').classList.remove('open');
+          setBusy(false);
+          load(); // refresh so Last Report Sent dates appear everywhere
+        }, 2000);
+      }
     } catch (err) {
+      setBusy(false);
       msg('sendAllMsg', err.message, 'err');
-      $('sendAllGo').disabled = false;
     }
+    sending = false;
   };
 
   $('range').onchange = (e) => { range = e.target.value; renderAll(); };

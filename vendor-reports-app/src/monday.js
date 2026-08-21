@@ -11,6 +11,7 @@ const API_VERSION = '2024-10';
 
 export const VENDOR_COLUMNS = {
   statusUpdateEmail: 'email_mm6dv20g', // "Status Update Email" on Vendors
+  lastReportSent: 'date_mm6e3f1a',     // "Last Report Sent" on Vendors, written by the app
 };
 
 export const JOB_COLUMNS = {
@@ -182,7 +183,7 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
 
   const rawVendors = await fetchItemsByIds({
     ids: [...vendorIds],
-    columnIds: [VENDOR_COLUMNS.statusUpdateEmail],
+    columnIds: [VENDOR_COLUMNS.statusUpdateEmail, VENDOR_COLUMNS.lastReportSent],
     token,
   });
 
@@ -193,6 +194,7 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
       id: raw.id,
       name: raw.name,
       recipients: splitRecipients(emailCol?.email || emailCol?.text || ''),
+      lastSent: cols[VENDOR_COLUMNS.lastReportSent]?.date || null,
     }];
   }));
 
@@ -213,4 +215,18 @@ export function splitRecipients(text) {
     .split(/[;,]/)
     .map((s) => s.trim())
     .filter((s) => s.includes('@')))];
+}
+
+/** Record on the Vendors board that a report went out today. */
+export async function markVendorSent({ vendorId, date, token }) {
+  const mutation = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }`;
+  await mondayFetch(mutation, {
+    boardId: String(BOARDS.vendors),
+    itemId: String(vendorId),
+    columnId: VENDOR_COLUMNS.lastReportSent,
+    value: JSON.stringify({ date }),
+  }, token);
 }

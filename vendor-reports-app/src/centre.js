@@ -64,6 +64,8 @@ export async function loadCentre({ now = new Date() } = {}) {
       id: vendor.id,
       name: vendor.name,
       recipients: vendor.recipients || [],
+      lastSent: vendor.lastSent || null,
+      lastSentLabel: label(vendor.lastSent),
       homes: live.activeHomes,
       counts: live.counts,
       lastActivity: live.lastActivity,

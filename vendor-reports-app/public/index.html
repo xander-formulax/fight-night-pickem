@@ -276,7 +276,14 @@
   <div class="dialog" style="max-width:560px">
     <h2>Send all reports</h2>
     <p class="dlg-sub" id="sendAllSub"></p>
-    <div id="sendAllList" style="max-height:320px;overflow-y:auto;border:1px solid var(--rule);border-radius:3px;margin:0 0 12px"></div>
+    <div style="position:relative">
+      <div id="sendAllList" style="max-height:320px;overflow-y:auto;border:1px solid var(--rule);border-radius:3px;margin:0 0 12px"></div>
+      <div class="busy" id="sendAllBusy">
+        <div class="spinner-sm"></div>
+        <p id="sendAllBusyText">Sending&hellip;</p>
+        <p class="busy-note">Leave this window open — each vendor is sent one at a time.</p>
+      </div>
+    </div>
     <p class="dlg-msg" id="sendAllMsg"></p>
     <div class="dlg-row">
       <button class="btn" id="sendAllClose">Cancel</button>
@@ -299,6 +306,17 @@
   .sa-result { grid-column:2 / -1; font-size:12px; }
   .sa-result.sent { color:var(--accent); }
   .sa-result.failed, .sa-result.skipped { color:var(--crit); }
+  .busy { display:none; position:absolute; inset:0 0 12px 0; background:color-mix(in srgb, var(--surface) 88%, transparent);
+    border-radius:3px; z-index:5; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; }
+  .busy.on { display:flex; }
+  .busy p { margin:0; font-weight:600; }
+  .busy .busy-note { font-weight:400; font-size:12.5px; color:var(--ink-soft); }
+  .busy.done .spinner-sm { display:none; }
+  .busy.done p:first-of-type { color:var(--accent); font-family:Archivo,sans-serif; font-size:1.15rem; }
+  .spinner-sm { width:26px; height:26px; border-radius:50%; border:3px solid var(--surface-2);
+    border-top-color:var(--accent); animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner-sm { animation:none; } }
 </style>
 
 <div class="overlay" id="sendOverlay">
@@ -335,4 +353,4 @@
 </style>
 
 <script src="/vendor/monday-sdk.js"></script>
-<script src="/app.js?b=2"></script>
+<script src="/app.js?b=3"></script>
