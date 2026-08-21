@@ -225,7 +225,7 @@
   // ---- email: send the open report ---------------------------------------
   const lastRecipients = {}; // per-vendor, per session
 
-  $('sendBtn').onclick = () => {
+  function openSendDialog() {
     if (!current) return;
     const period = DATA.ranges.find((r) => r.key === range);
     $('sendTitle').textContent = `Send — ${current.name}`;
@@ -234,7 +234,9 @@
     msg('sendMsg', '');
     $('sendOverlay').classList.add('open');
     $('sendTo').focus();
-  };
+  }
+  $('sendBtn').onclick = openSendDialog;
+  $('sendReportBtn').onclick = openSendDialog;
   $('sendClose').onclick = () => $('sendOverlay').classList.remove('open');
 
   $('sendGo').onclick = async () => {

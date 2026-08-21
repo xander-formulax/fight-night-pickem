@@ -215,6 +215,7 @@
   <p class="brand">Dragon Transport<span>Vendor Reporting Centre</span></p>
   <span class="bar-note mono" id="stamp"></span>
   <button class="btn" id="refreshBtn" style="padding:6px 11px;font-size:13px">Refresh</button>
+  <button class="btn" id="sendAllBtn" style="padding:6px 11px;font-size:13px">Send all reports&hellip;</button>
   <button class="btn" id="settingsBtn" style="padding:6px 11px;font-size:13px">Settings</button>
 </div>
 
@@ -231,7 +232,7 @@
       <label for="range">Report period</label>
       <select id="range"></select>
       <button class="btn primary" id="createBtn">Create report</button>
-      <button class="btn" id="sendAllBtn">Send all&hellip;</button>
+      <button class="btn" id="sendReportBtn">Send report&hellip;</button>
       <span class="mono" style="font-size:11.5px;color:var(--ink-faint)">Nothing is sent — you export and send it yourself</span>
     </div>
     <div class="homes" id="homes"></div>
@@ -243,7 +244,7 @@
     <button class="btn" id="backBtn">&larr; Back</button>
     <span class="mono" style="font-size:11.5px;color:var(--ink-faint)" id="rLabel"></span>
     <span class="spacer"></span>
-    <button class="btn primary" id="sendBtn">Send by email&hellip;</button>
+    <button class="btn primary" id="sendBtn">Send report&hellip;</button>
     <button class="btn" id="copyBtn">Copy for email</button>
     <button class="btn primary" id="printBtn">Export as PDF</button>
   </div>
@@ -353,4 +354,4 @@
 </style>
 
 <script src="/vendor/monday-sdk.js"></script>
-<script src="/app.js?b=3"></script>
+<script src="/app.js?b=4"></script>
