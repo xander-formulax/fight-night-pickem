@@ -24,3 +24,7 @@ mapps code:status -v $VersionId
 
 Write-Host ''
 Write-Host 'Done. Reload the app preview (or the workspace page) to see it.'
+
+# Keep the window open when launched by double-click / right-click,
+# so the result is readable before it disappears.
+if ($Host.Name -eq 'ConsoleHost') { Read-Host 'Press Enter to close' }
