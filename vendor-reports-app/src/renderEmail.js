@@ -60,7 +60,17 @@ function note(text) {
   return `<p style="margin:0 0 16px;padding:10px 14px;background:${WELL};border-radius:3px;font:400 14.5px ${FONT};color:${SOFT}">${esc(text)}</p>`;
 }
 
+// Long-text columns are multi-line; keep the office's line breaks.
+const escMultiline = (t) => esc(t).replace(/\r?\n/g, '<br>');
+
 function jobSection(job) {
+  const note = job.note
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px"><tr>
+        <td style="padding:11px 14px;background:#F3F7F1;border-left:3px solid ${GREEN};border-radius:3px">
+          <p style="margin:0 0 3px;font:600 10.5px ${FONT};letter-spacing:1.2px;text-transform:uppercase;color:${GREEN}">A note from Dragon Transports</p>
+          <p style="margin:0;font:400 14.5px ${FONT};color:${INK}">${escMultiline(job.note)}</p>
+        </td></tr></table>`
+    : '';
   const completed = job.completed.length
     ? group('Completed', GREEN, job.completed.map((c) => line(c.name, c.dateLabel, SOFT)).join(''))
     : note('No tasks were completed on this home this period.');
@@ -73,6 +83,7 @@ function jobSection(job) {
     <p style="margin:0 0 2px;font:600 17px ${FONT};color:${INK}">${esc(job.name)}</p>
     ${job.address ? `<p style="margin:0 0 14px;font:400 13.5px ${FONT};color:${SOFT}">${esc(job.address)}</p>` : ''}
     ${progressBar(job.progress)}
+    ${note}
     ${completed}
     ${pending}
   </td></tr>`;

@@ -102,6 +102,7 @@ export function buildJob(job, tasksById, week, today = week.end) {
     id: job.id,
     name: job.name,
     address: job.address || '',
+    note: job.note || '',
     state,
     progress: { done: done.length, total, pct: total ? Math.round((done.length / total) * 100) : 0 },
     completed,

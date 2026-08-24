@@ -79,10 +79,15 @@
     return done + todo;
   }
 
+  const escNote = (t) => esc(t).replace(/\r?\n/g, '<br>');
+  const noteBlock = (j) => j.note
+    ? `<div class="vnote"><span class="vnote-h">A note from Dragon Transports</span>${escNote(j.note)}</div>`
+    : '';
+
   function homeRow(j) {
     const body = j.state === 'unscoped'
       ? `<div class="empty">No build phases are marked Yes on this job yet, so there is nothing to report. Set the phase columns in monday and it will fill in.</div>`
-      : lists(j);
+      : noteBlock(j) + lists(j);
     const meta = [
       j.lastActivityLabel ? `Last finished ${esc(j.lastActivityLabel)}` : 'Nothing finished yet',
       j.nextScheduledLabel ? `Next up ${esc(j.nextScheduledLabel)}` : 'Nothing scheduled',
@@ -132,7 +137,7 @@
         <p class="p-addr">${esc(j.address)}</p>
         <div class="p-prog"><span class="meter"><i style="width:${Number(j.progress.pct) || 0}%"></i></span>
           <span class="frac mono">${j.progress.done} of ${j.progress.total} steps</span></div>
-        ${lists(j, 'No tasks were completed on this home this period.')}</div>`).join('');
+        ${noteBlock(j)}${lists(j, 'No tasks were completed on this home this period.')}</div>`).join('');
 
     const c = shown.reduce((a, j) => a + j.completed.length, 0);
     $('paper').innerHTML = `<p class="p-brand">Dragon Transport</p>

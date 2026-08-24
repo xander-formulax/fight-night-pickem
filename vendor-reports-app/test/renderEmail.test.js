@@ -36,3 +36,16 @@ test('internal triage labels never reach the email', () => {
   const html = renderEmail(report, 'August 17-23, 2026');
   assert.ok(!/stalled|on track|not scoped/i.test(html));
 });
+
+
+test('the vendor note renders escaped with line breaks', () => {
+  const withNote = { ...report, jobs: [{ ...report.jobs[0], note: 'Crew arrives <early>.\nCall first.' }] };
+  const html = renderEmail(withNote, 'August 17-23, 2026');
+  assert.ok(html.includes('A note from Dragon Transports'));
+  assert.ok(html.includes('Crew arrives &lt;early&gt;.<br>Call first.'));
+});
+
+test('no note, no note block', () => {
+  const html = renderEmail(report, 'August 17-23, 2026');
+  assert.ok(!html.includes('A note from Dragon Transports'));
+});

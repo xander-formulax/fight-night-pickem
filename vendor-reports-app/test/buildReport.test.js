@@ -208,3 +208,13 @@ test('a finished home is complete, not stalled', () => {
   );
   assert.equal(j.state, 'complete');
 });
+
+
+test('the vendor note passes through to the report untouched', () => {
+  const j = buildJob(
+    { ...job('A', ['Pad'], { Pad: ['t1'] }), note: 'Delivery moved to Friday.\nGate code is 4411.' },
+    tasks([{ id: 't1', status: 'Done', finishedDate: '2026-08-18' }]),
+    week,
+  );
+  assert.equal(j.note, 'Delivery moved to Friday.\nGate code is 4411.');
+});

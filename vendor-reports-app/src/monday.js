@@ -116,13 +116,34 @@ const byId = (item) => Object.fromEntries((item.column_values || []).map((c) => 
  * Jobs in Active Jobs, plus recently completed ones so a finished home
  * visibly lands rather than silently disappearing.
  */
+// The office writes this long-text column on Jobs specifically for the vendor,
+// so it goes into the report verbatim. Resolved by title rather than id, so a
+// rename or absence degrades to "no note" instead of an error.
+const VENDOR_NOTE_TITLE = 'notes for the vendor';
+
+async function findVendorNoteColumn(token) {
+  try {
+    const data = await mondayFetch(
+      `query ($ids: [ID!]) { boards(ids: $ids) { columns { id title type } } }`,
+      { ids: [String(BOARDS.jobs)] }, token);
+    const col = (data.boards?.[0]?.columns || []).find(
+      (c) => c.type === 'long_text' && c.title.trim().toLowerCase() === VENDOR_NOTE_TITLE);
+    return col?.id || null;
+  } catch (err) {
+    console.error('could not resolve vendor note column:', err.message);
+    return null;
+  }
+}
+
 export async function loadReportData({ token, recentlyCompletedSince }) {
+  const noteColumnId = await findVendorNoteColumn(token);
   const scopeCols = PHASES.map((p) => p.scope);
   const relCols = PHASES.map((p) => p.rel);
 
   const rawJobs = await fetchItems({
     boardId: BOARDS.jobs,
-    columnIds: [JOB_COLUMNS.address, JOB_COLUMNS.vendor, JOB_COLUMNS.finishDate, ...scopeCols, ...relCols],
+    columnIds: [JOB_COLUMNS.address, JOB_COLUMNS.vendor, JOB_COLUMNS.finishDate,
+      ...(noteColumnId ? [noteColumnId] : []), ...scopeCols, ...relCols],
     groupIds: [JOB_GROUPS.active, JOB_GROUPS.completed],
     token,
   });
@@ -156,6 +177,7 @@ export async function loadReportData({ token, recentlyCompletedSince }) {
       id: raw.id,
       name: raw.name,
       address: cols[JOB_COLUMNS.address]?.text || '',
+      note: (noteColumnId && cols[noteColumnId]?.text || '').trim(),
       vendorId: vendorId ? String(vendorId) : null,
       finishDate: finish,
       group: raw.group?.id,
