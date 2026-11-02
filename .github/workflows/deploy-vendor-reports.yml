@@ -1,0 +1,99 @@
+# Deploys the Vendor Reports app to monday code whenever its code changes.
+#
+# One-time setup (only the account owner can do this):
+#   GitHub repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+#     Name:   MONDAY_API_TOKEN
+#     Value:  a monday API token for the Dragon Transport account
+#             (monday -> avatar -> Developers -> My Access Tokens)
+#
+# After that: every push that touches vendor-reports-app/ deploys itself to the
+# current DRAFT version. Promoting to live stays a deliberate act — run this
+# workflow manually with "promote" ticked, or press Promote to live in the
+# Developer Center.
+
+name: Deploy Vendor Reports
+
+on:
+  push:
+    branches: [claude/vendor-reports-app-design-xs0s9w, main]
+    paths: ['vendor-reports-app/**']
+  workflow_dispatch:
+    inputs:
+      promote:
+        description: 'Promote to live after deploying'
+        type: boolean
+        default: false
+
+concurrency:
+  group: vendor-reports-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vendor-reports-app
+    env:
+      APP_ID: '11946690'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: vendor-reports-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Install monday CLI
+        run: npm i -g @mondaycom/apps-cli
+
+      - name: Authenticate
+        env:
+          TOKEN: ${{ secrets.MONDAY_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::MONDAY_API_TOKEN secret is not set. See the comment at the top of this workflow file."
+            exit 1
+          fi
+          mapps init -l -t "$TOKEN"
+
+      - name: Find the draft version
+        id: ver
+        run: |
+          out=$(mapps app-version:list -i "$APP_ID" 2>&1) || true
+          echo "$out"
+          # the draft row's first long number is the app version id
+          id=$(printf '%s\n' "$out" | grep -i "draft" | grep -oE '[0-9]{7,}' | head -1)
+          if [ -z "$id" ]; then
+            echo "::error::No draft version found. In the Developer Center open Vendor Reports -> Manage -> App Versions -> + New version, then re-run this workflow."
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Draft version: $id"
+
+      - name: Push code to monday
+        run: mapps code:push -i "${{ steps.ver.outputs.id }}"
+
+      - name: Deployment status
+        run: mapps code:status -v "${{ steps.ver.outputs.id }}"
+
+      - name: Promote to live
+        if: inputs.promote
+        run: mapps app:promote -a "$APP_ID" -i "${{ steps.ver.outputs.id }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Vendor Reports deployed"
+            echo ""
+            echo "- App version: \`${{ steps.ver.outputs.id }}\`"
+            echo "- Promoted to live: \`${{ inputs.promote || false }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
