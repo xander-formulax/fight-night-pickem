@@ -1,30 +1,62 @@
 # One-command deploy for the Vendor Reports app.
 #
-#   .\deploy.ps1              pulls the latest code and pushes it to monday
-#   .\deploy.ps1 12345678     same, but to a specific app version id
+#   .\deploy.ps1              finds the current draft version and pushes to it
+#   .\deploy.ps1 19565315     pushes to a specific app version id
 #
-# Update the default below whenever you create a new version in the
-# Developer Center (find ids with: mapps app-version:list).
-param([string]$VersionId = '17108106')
+# Promoting a draft to live is deliberately NOT done here — that stays a
+# human decision in the Developer Center.
+
+param([string]$VersionId = '')
 
 $ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot   # always run from the app folder, wherever invoked
+Set-Location $PSScriptRoot        # run from the app folder, wherever invoked
+
+$AppId = '11946690'               # Vendor Reports
+
+function Pause-IfClicked {
+  if ($Host.Name -eq 'ConsoleHost') { Read-Host 'Press Enter to close' }
+}
 
 Write-Host ''
-Write-Host '== 1/3  Pulling latest code =='
+Write-Host '== 1/4  Pulling latest code =='
 git pull
 
+if (-not $VersionId) {
+  Write-Host ''
+  Write-Host '== 2/4  Looking for the draft version =='
+  # The CLI prints a table; the draft row carries the version id as its first
+  # long number. Beats hardcoding an id that goes stale on every promote.
+  $rows = mapps app-version:list -i $AppId 2>&1
+  foreach ($line in $rows) {
+    $text = "$line"
+    if ($text -match "'draft'" -and $text -match '(\d{7,})') {
+      $VersionId = $matches[1]
+      break
+    }
+  }
+  if (-not $VersionId) {
+    Write-Host ''
+    Write-Host 'No draft version found — every version is live or deprecated.' -ForegroundColor Yellow
+    Write-Host 'In the Developer Center: Vendor Reports -> Manage -> App Versions -> + New version,'
+    Write-Host 'then run this again.'
+    Pause-IfClicked
+    exit 1
+  }
+  Write-Host "Draft version is $VersionId"
+} else {
+  Write-Host ''
+  Write-Host "== 2/4  Using version $VersionId =="
+}
+
 Write-Host ''
-Write-Host "== 2/3  Pushing to monday (version $VersionId) =="
+Write-Host '== 3/4  Pushing to monday =='
 mapps code:push -i $VersionId
 
 Write-Host ''
-Write-Host '== 3/3  Deployment status =='
+Write-Host '== 4/4  Deployment status =='
 mapps code:status -v $VersionId
 
 Write-Host ''
 Write-Host 'Done. Reload the app preview (or the workspace page) to see it.'
-
-# Keep the window open when launched by double-click / right-click,
-# so the result is readable before it disappears.
-if ($Host.Name -eq 'ConsoleHost') { Read-Host 'Press Enter to close' }
+Write-Host 'Happy with it? Promote to live in the Developer Center.'
+Pause-IfClicked
