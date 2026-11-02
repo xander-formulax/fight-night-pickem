@@ -80,7 +80,7 @@ export async function loadCentre({ now = new Date() } = {}) {
 
   return {
     today,
-    ranges: periods.map((p) => ({ key: p.key, label: p.label, range: formatWeekRange(p) })),
+    ranges: periods.map((p) => ({ key: p.key, label: p.label, range: formatWeekRange(p), start: p.start, end: p.end })),
     vendors,
     readiness: accountReadiness(data),
   };

@@ -14,13 +14,22 @@ import { formatDay, formatWeekRange } from '../src/week.js';
 import { vendors, jobsByVendor, tasksById } from '../test/real-data.js';
 
 const TODAY = process.env.DEMO_TODAY || '2026-08-20';
+
+// Stand-ins for the Vendors board columns the snapshot does not carry, so the
+// demo exercises the real states: connected, missing an address, already sent.
+const DEMO_EMAIL = {
+  '11884347330': ['mkeelin@titanfactorydirect.com'],
+  '12246117985': ['orders@palmharbor-hobbs.com', 'service@palmharbor-hobbs.com'],
+  '12246182018': [],
+};
+const DEMO_SENT = { '11884347330': '2026-08-14', '12246182018': '2026-08-18' };
 const label = (d) => (d ? formatDay(d) : null);
 
 function centre() {
   const periods = periodsFor(TODAY);
   return {
     today: TODAY,
-    ranges: periods.map((p) => ({ key: p.key, label: p.label, range: formatWeekRange(p) })),
+    ranges: periods.map((p) => ({ key: p.key, label: p.label, range: formatWeekRange(p), start: p.start, end: p.end })),
     vendors: vendors.map((v) => {
       const reports = {};
       for (const p of periods) {
@@ -37,6 +46,9 @@ function centre() {
       const live = reports['this-week'];
       return {
         id: v.id, name: v.name, homes: live.activeHomes, counts: live.counts,
+        recipients: DEMO_EMAIL[v.id] || [],
+        lastSent: DEMO_SENT[v.id] || null,
+        lastSentLabel: label(DEMO_SENT[v.id] || null),
         lastActivity: live.lastActivity, lastActivityLabel: label(live.lastActivity),
         nextScheduled: live.nextScheduled, nextScheduledLabel: label(live.nextScheduled),
         reports,

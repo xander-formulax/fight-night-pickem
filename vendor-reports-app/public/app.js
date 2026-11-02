@@ -1,22 +1,33 @@
 // Vendor Reporting Centre — frontend.
 //
-// Read-only. Nothing here can send anything; the backend has no send path.
-// The user exports a PDF or copies the report into their own mail client.
+// Laid out to match the Job Manager app so the two read as one product:
+// a searchable card grid with pill tabs, drilling into a vendor's homes as
+// cards, then into the exportable report. Nothing is generated here; every
+// value comes from the board data the backend computed.
 
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const STATE_LABEL = { complete: 'Complete', active: 'On track', stalled: 'Stalled', unscoped: 'Not scoped' };
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const icon = (n, cls = 'i') => `<svg class="${cls}"><use href="#ic-${n}"/></svg>`;
+
+  const STATE = {
+    complete: { label: 'Complete', pill: 'good' },
+    active:   { label: 'On track', pill: '' },
+    stalled:  { label: 'Stalled',  pill: 'crit' },
+    unscoped: { label: 'Not scoped', pill: 'warn' },
+  };
 
   let DATA = null;
-  let current = null;
+  let current = null;          // selected vendor on the detail screen
   let range = 'this-week';
+  let tab = 'all';             // vendor grid filter
+  let homeTab = 'all';         // home filter inside a vendor
+  let sort = 'attention';
+  let query = '';
 
   // ---- talking to our backend --------------------------------------------
-  // monday hands the iframe a short-lived session token; the backend verifies
-  // it before returning anything.
   async function sessionToken() {
     if (!window.mondaySdk) return null;
     try {
@@ -42,30 +53,160 @@
     return res.json();
   }
 
-  // ---- rendering ----------------------------------------------------------
-  function renderRail() {
-    $('vendorList').innerHTML = DATA.vendors.map((v) => {
-      const attention = (v.counts.stalled || 0) + (v.counts.unscoped || 0);
-      return `<button class="vbtn" data-id="${esc(v.id)}" aria-current="${v.id === current.id}">
-        ${esc(v.name)}${attention ? '<span class="dot" title="needs attention"></span>' : ''}
-        <small>${plural(v.homes, 'home')}</small></button>`;
+  // ---- derived facts (all from board data, nothing invented) --------------
+  const period = () => DATA.ranges.find((r) => r.key === range) || DATA.ranges[0];
+
+  const dayNum = (ymd) => (ymd ? Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)) / 864e5 : null);
+
+  function agoLabel(ymd) {
+    const a = dayNum(ymd); const b = dayNum(DATA.today);
+    if (a == null || b == null) return null;
+    const n = b - a;
+    if (n <= 0) return 'today';
+    if (n === 1) return 'yesterday';
+    return `${n}d ago`;
+  }
+
+  /** Everything the vendor grid needs, computed once per render. */
+  function vendorFacts(v) {
+    const rep = v.reports[range];
+    const jobs = rep.jobs;
+    const live = jobs.filter((j) => j.state !== 'unscoped');
+    const hasEmail = (v.recipients || []).length > 0;
+    const sendable = live.length > 0;
+
+    const done = live.reduce((n, j) => n + j.progress.done, 0);
+    const total = live.reduce((n, j) => n + j.progress.total, 0);
+
+    // soonest booked work across this vendor's homes, with the phase name
+    let next = null;
+    for (const j of jobs) {
+      for (const p of j.pending) {
+        if (p.date && (!next || p.date < next.date)) next = { date: p.date, name: p.name, home: j.name };
+      }
+    }
+
+    const stalled = rep.counts.stalled || 0;
+    const unscoped = rep.counts.unscoped || 0;
+    const sentInPeriod = Boolean(v.lastSent && period().start && v.lastSent >= period().start);
+
+    return {
+      rep, jobs, hasEmail, sendable, stalled, unscoped, next, sentInPeriod,
+      completed: rep.completedCount,
+      progress: { done, total, pct: total ? Math.round((done / total) * 100) : 0 },
+      attention: !hasEmail || stalled > 0 || unscoped > 0,
+      ready: hasEmail && sendable,
+    };
+  }
+
+  const TABS = [
+    { key: 'all',       label: 'All Vendors',    test: () => true },
+    { key: 'ready',     label: 'Ready to Send',  test: (f) => f.ready && !f.sentInPeriod },
+    { key: 'attention', label: 'Needs Attention', test: (f) => f.attention },
+    { key: 'sent',      label: 'Sent This Period', test: (f) => f.sentInPeriod },
+  ];
+
+  function matchesQuery(v) {
+    if (!query) return true;
+    const hay = [v.name, ...(v.recipients || []),
+      ...v.reports[range].jobs.flatMap((j) => [j.name, j.address])].join(' ').toLowerCase();
+    return hay.includes(query);
+  }
+
+  // ---- vendor grid --------------------------------------------------------
+  function vendorCard(v, f) {
+    const pill = !f.hasEmail ? '<span class="pill crit">No email</span>'
+      : !f.sendable ? '<span class="pill grey">Nothing to report</span>'
+      : f.sentInPeriod ? '<span class="pill good">Sent</span>'
+      : '<span class="pill">Ready to send</span>';
+    const extra = f.stalled ? `<span class="pill crit">${f.stalled} stalled</span>` : '';
+
+    const mail = f.hasEmail
+      ? `<p class="meta">${icon('mail')}<span>${esc(v.recipients.join('; '))}</span></p>`
+      : `<p class="meta bad">${icon('mail')}<span>No Status Update Email on the board</span></p>`;
+
+    const next = f.next
+      ? `<div class="card-div"><p class="meta" style="margin:0">${icon('cal')}<span>
+           <span class="next-l">Next: ${esc(f.next.name)}</span>
+           <span class="next-s"> &middot; ${esc(f.next.home)} &middot; ${esc(dateLabel(f.next.date))}</span></span></p></div>`
+      : '';
+
+    const sent = v.lastSent
+      ? `Report sent ${esc(agoLabel(v.lastSent))}${v.lastSentLabel ? ` &middot; ${esc(v.lastSentLabel)}` : ''}`
+      : 'No report sent yet';
+
+    return `<button class="card" data-vendor="${esc(v.id)}">
+      <div class="card-top">
+        <span class="card-name">${esc(v.name)}</span>
+        <span class="chev" aria-hidden="true">${icon('chev-r')}</span>
+      </div>
+      <div class="card-pills">${pill}${extra}</div>
+      ${mail}
+      <p class="meta">${icon('home')}<span>${plural(v.homes, 'home')} &middot; ${plural(f.completed, 'task')} finished this period</span></p>
+      ${f.sendable ? `
+      <div class="prog-head"><span>Progress</span><span>${f.progress.done}/${f.progress.total} phases</span></div>
+      <div class="bar${f.progress.pct >= 100 ? ' full' : ''}"><i style="width:${f.progress.pct}%"></i></div>` : ''}
+      ${next}
+      <div class="card-div card-foot">${icon('clock')}<span>${sent}</span></div>
+    </button>`;
+  }
+
+  function dateLabel(ymd) {
+    // the backend already formats the dates it exposes; this is for pending
+    // entries, whose label lives in the status string
+    const d = new Date(`${ymd}T12:00:00Z`);
+    return d.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  function renderTabs(facts) {
+    $('tabs').innerHTML = TABS.map((t) => {
+      const n = DATA.vendors.filter((v) => t.test(facts.get(v.id))).length;
+      const badge = t.key === 'attention' && n ? ' badge' : '';
+      return `<button class="tab" data-tab="${t.key}" aria-pressed="${t.key === tab}">
+        ${t.label}<span class="n${badge}">${n}</span></button>`;
     }).join('');
-    $('vendorList').querySelectorAll('.vbtn').forEach((b) => {
-      b.onclick = () => { current = DATA.vendors.find((v) => v.id === b.dataset.id); renderAll(); };
+    $('tabs').querySelectorAll('.tab').forEach((b) => {
+      b.onclick = () => { tab = b.dataset.tab; renderVendors(); };
     });
   }
 
-  function renderKpis() {
-    const c = current.counts;
-    const cells = [
-      { n: current.homes, l: 'homes', cls: '' },
-      { n: current.reports[range].completedCount, l: 'finished this period', cls: 'ok' },
-      { n: c.stalled || 0, l: 'stalled', cls: c.stalled ? 'crit' : '' },
-      { n: c.unscoped || 0, l: 'not scoped yet', cls: c.unscoped ? 'warn' : '' },
-    ];
-    $('kpis').innerHTML = cells.map((k) =>
-      `<div class="kpi ${k.cls}"><b>${k.n}</b><span>${k.l}</span></div>`).join('');
+  function renderVendors() {
+    const facts = new Map(DATA.vendors.map((v) => [v.id, vendorFacts(v)]));
+    renderTabs(facts);
+
+    const t = TABS.find((x) => x.key === tab) || TABS[0];
+    let list = DATA.vendors.filter((v) => t.test(facts.get(v.id)) && matchesQuery(v));
+
+    const f = (v) => facts.get(v.id);
+    list.sort((a, b) => {
+      if (sort === 'name') return a.name.localeCompare(b.name);
+      if (sort === 'homes') return b.homes - a.homes || a.name.localeCompare(b.name);
+      if (sort === 'sent') {
+        const av = a.lastSent || '0000-00-00'; const bv = b.lastSent || '0000-00-00';
+        return av.localeCompare(bv) || a.name.localeCompare(b.name);
+      }
+      // needs attention first, then most unsent, then name
+      const score = (v) => (f(v).attention ? 0 : 1) * 10 + (f(v).sentInPeriod ? 1 : 0);
+      return score(a) - score(b) || a.name.localeCompare(b.name);
+    });
+
+    $('vendorGrid').innerHTML = list.map((v) => vendorCard(v, f(v))).join('');
+    $('vendorGrid').querySelectorAll('[data-vendor]').forEach((el) => {
+      el.onclick = () => openVendor(el.dataset.vendor);
+    });
+
+    const none = $('vendorNone');
+    none.style.display = list.length ? 'none' : '';
+    none.textContent = query
+      ? `No vendors match “${query}”.`
+      : 'No vendors in this view.';
   }
+
+  // ---- vendor detail ------------------------------------------------------
+  const escNote = (t) => esc(t).replace(/\r?\n/g, '<br>');
+  const noteBlock = (j) => j.note
+    ? `<div class="vnote"><span class="vnote-h">A note from Dragon Transports</span>${escNote(j.note)}</div>`
+    : '';
 
   function lists(j, emptyDoneText) {
     const done = j.completed.length
@@ -79,73 +220,112 @@
     return done + todo;
   }
 
-  const escNote = (t) => esc(t).replace(/\r?\n/g, '<br>');
-  const noteBlock = (j) => j.note
-    ? `<div class="vnote"><span class="vnote-h">A note from Dragon Transports</span>${escNote(j.note)}</div>`
-    : '';
+  const HOME_TABS = [
+    { key: 'all',      label: 'All Homes', test: () => true },
+    { key: 'active',   label: 'On Track',  test: (j) => j.state === 'active' },
+    { key: 'stalled',  label: 'Stalled',   test: (j) => j.state === 'stalled' },
+    { key: 'complete', label: 'Complete',  test: (j) => j.state === 'complete' },
+    { key: 'unscoped', label: 'Not Scoped', test: (j) => j.state === 'unscoped' },
+  ];
 
-  function homeRow(j) {
+  function homeCard(j) {
+    const s = STATE[j.state];
     const body = j.state === 'unscoped'
       ? `<div class="empty">No build phases are marked Yes on this job yet, so there is nothing to report. Set the phase columns in monday and it will fill in.</div>`
       : noteBlock(j) + lists(j);
-    const meta = [
-      j.lastActivityLabel ? `Last finished ${esc(j.lastActivityLabel)}` : 'Nothing finished yet',
-      j.nextScheduledLabel ? `Next up ${esc(j.nextScheduledLabel)}` : 'Nothing scheduled',
-    ];
-    return `<article class="home ${esc(j.state)}">
-      <button class="home-top" type="button">
-        <span><span class="home-name">${esc(j.name)}</span><br><span class="home-addr">${esc(j.address)}</span></span>
-        <span class="home-right">
-          ${j.state === 'unscoped' ? '' :
-            `<span class="meter"><i style="width:${Number(j.progress.pct) || 0}%"></i></span>
-             <span class="frac mono">${j.progress.done} of ${j.progress.total}</span>`}
-          <span class="pill ${esc(j.state)}">${STATE_LABEL[j.state]}</span>
-        </span>
-        <span class="home-meta">${meta.map((m) => `<span>${m}</span>`).join('')}</span>
-      </button>
+
+    const next = j.nextScheduledLabel
+      ? `<div class="card-div"><p class="meta" style="margin:0">${icon('cal')}<span class="next-l">Next up ${esc(j.nextScheduledLabel)}</span></p></div>`
+      : '';
+
+    return `<article class="card" data-home>
+      <div class="card-top">
+        <span class="card-name">${esc(j.name)}</span>
+        <span class="chev" aria-hidden="true">${icon('chev')}</span>
+      </div>
+      <div class="card-pills"><span class="pill ${s.pill}">${s.label}</span></div>
+      ${j.address ? `<p class="meta">${icon('pin')}<span>${esc(j.address)}</span></p>` : ''}
+      ${j.state !== 'unscoped' ? `
+      <div class="prog-head"><span>Progress</span><span>${j.progress.done}/${j.progress.total} phases</span></div>
+      <div class="bar${j.progress.pct >= 100 ? ' full' : ''}"><i style="width:${Number(j.progress.pct) || 0}%"></i></div>` : ''}
+      ${next}
+      <div class="card-div card-foot">${icon('clock')}<span>${
+        j.lastActivityLabel ? `Last finished ${esc(j.lastActivityLabel)}` : 'Nothing finished yet'}</span></div>
       <div class="home-body">${body}</div>
     </article>`;
   }
 
-  function renderHomes() {
-    const order = { stalled: 0, unscoped: 1, active: 2, complete: 3 };
-    const jobs = current.reports[range].jobs.slice()
-      .sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
-    $('homes').innerHTML = jobs.map(homeRow).join('');
-    $('homes').querySelectorAll('.home-top').forEach((b) => {
-      b.onclick = () => b.parentElement.classList.toggle('open');
+  function renderDetail() {
+    const f = vendorFacts(current);
+    const p = period();
+
+    $('vName').textContent = current.name;
+    $('vSub').textContent = [
+      f.hasEmail ? current.recipients.join('; ') : 'No Status Update Email on the board',
+      plural(current.homes, 'home'),
+      current.lastSent ? `report sent ${agoLabel(current.lastSent)}` : 'no report sent yet',
+      p.range,
+    ].join('  ·  ');
+
+    $('stats').innerHTML = [
+      { n: current.homes, l: 'homes', c: '' },
+      { n: f.completed, l: 'finished this period', c: f.completed ? 'good' : '' },
+      { n: f.stalled, l: 'stalled', c: f.stalled ? 'crit' : '' },
+      { n: f.unscoped, l: 'not scoped yet', c: f.unscoped ? 'warn' : '' },
+    ].map((s) => `<div class="stat ${s.c}"><b>${s.n}</b><span>${s.l}</span></div>`).join('');
+
+    const jobs = f.jobs;
+    $('homeTabs').innerHTML = HOME_TABS.map((t) => {
+      const n = jobs.filter(t.test).length;
+      return `<button class="subtab" data-htab="${t.key}" aria-pressed="${t.key === homeTab}">
+        ${t.label}<span class="n">${n}</span></button>`;
+    }).join('');
+    $('homeTabs').querySelectorAll('.subtab').forEach((b) => {
+      b.onclick = () => { homeTab = b.dataset.htab; renderDetail(); };
     });
+
+    const ht = HOME_TABS.find((x) => x.key === homeTab) || HOME_TABS[0];
+    const order = { stalled: 0, unscoped: 1, active: 2, complete: 3 };
+    const shown = jobs.filter(ht.test)
+      .sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+
+    $('homeGrid').innerHTML = shown.map(homeCard).join('');
+    $('homeGrid').querySelectorAll('[data-home]').forEach((el) => {
+      el.onclick = (e) => { if (!e.target.closest('a')) el.classList.toggle('open'); };
+    });
+    $('homeNone').style.display = shown.length ? 'none' : '';
+    $('homeNone').textContent = 'No homes in this view.';
+
+    $('rLabel').textContent = `${current.name} — ${p.range}`;
   }
 
-  function renderAll() {
-    $('vName').textContent = current.name;
-    $('vSub').textContent = `${plural(current.homes, 'home')} · `
-      + (current.lastActivityLabel ? `last work finished ${current.lastActivityLabel}` : 'no work finished yet')
-      + ' · ' + (current.nextScheduledLabel ? `next booked ${current.nextScheduledLabel}` : 'nothing booked')
-      + ' · ' + (current.lastSentLabel ? `report last sent ${current.lastSentLabel}` : 'no report sent yet');
-    renderRail(); renderKpis(); renderHomes();
-    $('rLabel').textContent = `${current.name} — ${DATA.ranges.find((r) => r.key === range).range}`;
+  function openVendor(id) {
+    current = DATA.vendors.find((v) => String(v.id) === String(id));
+    if (!current) return;
+    homeTab = 'all';
+    renderDetail();
+    document.body.dataset.screen = 'detail';
+    window.scrollTo(0, 0);
   }
 
   // ---- the exportable report ---------------------------------------------
   function buildPaper() {
     const rep = current.reports[range];
-    const periodLabel = DATA.ranges.find((r) => r.key === range).range;
+    const p = period();
     // A home with no phases marked has nothing truthful to say to a customer.
     const shown = rep.jobs.filter((j) => j.state !== 'unscoped');
     const rows = shown.map((j) => `<div class="p-job"><h3>${esc(j.name)}</h3>
-        <p class="p-addr">${esc(j.address)}</p>
-        <div class="p-prog"><span class="meter"><i style="width:${Number(j.progress.pct) || 0}%"></i></span>
-          <span class="frac mono">${j.progress.done} of ${j.progress.total} steps</span></div>
+        ${j.address ? `<p class="p-addr">${esc(j.address)}</p>` : ''}
+        <div class="p-prog"><span class="bar${j.progress.pct >= 100 ? ' full' : ''}"><i style="width:${Number(j.progress.pct) || 0}%"></i></span>
+          <span class="frac">${j.progress.done} of ${j.progress.total} steps</span></div>
         ${noteBlock(j)}${lists(j, 'No tasks were completed on this home this period.')}</div>`).join('');
 
     const c = shown.reduce((a, j) => a + j.completed.length, 0);
-    $('paper').innerHTML = `<p class="p-brand">Dragon Transport</p>
-      <h2 class="p-title">Progress Report</h2>
-      <p class="p-dates">${esc(current.name)} · ${esc(periodLabel)}</p>
+    $('paper').innerHTML = `<h2 class="p-title">Progress Report from <span>Dragon Transports</span>!</h2>
+      <p class="p-dates">${esc(current.name)} · ${esc(p.range)}</p>
       <p class="p-count"><strong>${plural(shown.length, 'home')}</strong> · ${plural(c, 'task')} completed this period</p>
       ${rows}
-      <p class="p-foot">Questions on any home above? Reply to this email or call the office.</p>`;
+      <p class="p-foot">Questions on any home above? Reply to this email and we will get right back to you.</p>`;
   }
 
   // ---- wiring -------------------------------------------------------------
@@ -156,12 +336,13 @@
       document.body.className = 'errored';
       return;
     }
-    current = DATA.vendors.find((v) => v.id === current?.id) || DATA.vendors[0];
     $('range').innerHTML = DATA.ranges.map((r) =>
-      `<option value="${esc(r.key)}"${r.key === range ? ' selected' : ''}>${esc(r.label)} — ${esc(r.range)}</option>`).join('');
+      `<option value="${esc(r.key)}"${r.key === range ? ' selected' : ''}>${esc(r.label)}</option>`).join('');
     $('stamp').textContent = `Board data as of ${new Date().toLocaleTimeString()}`;
     document.body.className = '';
-    renderAll();
+    if (current) current = DATA.vendors.find((v) => v.id === current.id) || null;
+    renderVendors();
+    if (current) renderDetail(); else document.body.dataset.screen = 'vendors';
   }
 
   async function load(refresh = false) {
@@ -184,7 +365,7 @@
     try {
       const st = await api('/api/settings');
       $('settingsStatus').innerHTML = st.connected
-        ? `Currently sending as <b>${st.address.replace(/[<>&]/g, '')}</b>`
+        ? `Currently sending as <b>${esc(st.address)}</b>`
         : 'No sending account connected yet.';
       $('setAddress').value = st.address || '';
     } catch (err) {
@@ -205,7 +386,7 @@
         body: JSON.stringify({ address: $('setAddress').value, appPassword: $('setPassword').value }),
       });
       msg('settingsMsg', 'Connected. Gmail accepted the sign-in.', 'ok');
-      $('settingsStatus').innerHTML = `Currently sending as <b>${st.address.replace(/[<>&]/g, '')}</b>`;
+      $('settingsStatus').innerHTML = `Currently sending as <b>${esc(st.address)}</b>`;
       $('setPassword').value = '';
     } catch (err) { msg('settingsMsg', err.message, 'err'); }
   };
@@ -227,14 +408,13 @@
     } catch (err) { msg('settingsMsg', err.message, 'err'); }
   };
 
-  // ---- email: send the open report ---------------------------------------
-  const lastRecipients = {}; // per-vendor, per session
+  // ---- email: send one vendor --------------------------------------------
+  const lastRecipients = {};
 
   function openSendDialog() {
     if (!current) return;
-    const period = DATA.ranges.find((r) => r.key === range);
     $('sendTitle').textContent = `Send — ${current.name}`;
-    $('sendSub').textContent = `${period.range}. The email is rebuilt from the boards on send; unscoped homes are left out.`;
+    $('sendSub').textContent = `${period().range}. The email is rebuilt from the boards on send; unscoped homes are left out.`;
     $('sendTo').value = lastRecipients[current.id] || (current.recipients || []).join('; ');
     msg('sendMsg', '');
     $('sendOverlay').classList.add('open');
@@ -256,38 +436,35 @@
       });
       lastRecipients[current.id] = $('sendTo').value;
       msg('sendMsg', `Sent to ${out.to.join(', ')} from ${out.from}.`, 'ok');
-      setTimeout(() => $('sendOverlay').classList.remove('open'), 1800);
+      setTimeout(() => { $('sendOverlay').classList.remove('open'); load(); }, 1600);
     } catch (err) { msg('sendMsg', err.message, 'err'); }
     btn.disabled = false;
   };
 
-  // ---- send all -----------------------------------------------------------
+  // ---- email: send all ----------------------------------------------------
   function sendAllRows() {
     return DATA.vendors.map((v) => {
-      const report = v.reports[range];
-      const sendable = report.jobs.some((j) => j.state !== 'unscoped');
-      const hasEmail = (v.recipients || []).length > 0;
-      return { v, sendable, hasEmail, on: sendable && hasEmail };
+      const f = vendorFacts(v);
+      return { v, f, on: f.ready && !f.sentInPeriod };
     });
   }
 
   function renderSendAll(rows) {
-    $('sendAllList').innerHTML = rows.map(({ v, sendable, hasEmail, on }) => `
-      <label class="sa-row ${sendable && hasEmail ? '' : 'off'}">
-        <input type="checkbox" data-id="${v.id}" ${on ? 'checked' : ''} ${sendable && hasEmail ? '' : 'disabled'}>
+    $('sendAllList').innerHTML = rows.map(({ v, f, on }) => `
+      <label class="sa-row ${f.ready ? '' : 'off'}">
+        <input type="checkbox" data-id="${esc(v.id)}" ${on ? 'checked' : ''} ${f.ready ? '' : 'disabled'}>
         <span class="sa-name">${esc(v.name)}</span>
-        <span class="sa-homes">${plural(v.homes, 'home')}${v.lastSentLabel ? ` · last sent ${esc(v.lastSentLabel)}` : ' · never sent'}</span>
-        <span class="sa-mail ${hasEmail ? '' : 'missing'}">${
-          hasEmail ? esc(v.recipients.join('; '))
-          : !sendable ? 'nothing to report this period'
+        <span class="sa-homes">${plural(v.homes, 'home')}${v.lastSent ? ` · sent ${esc(agoLabel(v.lastSent))}` : ' · never sent'}</span>
+        <span class="sa-mail ${f.hasEmail ? '' : 'missing'}">${
+          f.hasEmail ? esc(v.recipients.join('; '))
+          : !f.sendable ? 'nothing to report this period'
           : 'no Status Update Email on the Vendors board'}</span>
-        <span class="sa-result" data-result="${v.id}"></span>
+        <span class="sa-result" data-result="${esc(v.id)}"></span>
       </label>`).join('');
   }
 
   $('sendAllBtn').onclick = () => {
-    const period = DATA.ranges.find((r) => r.key === range);
-    $('sendAllSub').textContent = `${period.range}. Everyone below gets their own report, sent to the address on the Vendors board. Untick anyone who should sit this one out.`;
+    $('sendAllSub').textContent = `${period().range}. Everyone below gets their own report, sent to the address on the Vendors board. Untick anyone who should sit this one out.`;
     renderSendAll(sendAllRows());
     msg('sendAllMsg', '');
     setBusy(false);
@@ -336,14 +513,13 @@
         ? 'Some sends failed — details below.'
         : `All reports delivered from ${out.from}.`;
       if (t.failed) {
-        // fade the curtain so the per-vendor failures can be read
         setTimeout(() => { busy.classList.remove('on'); $('sendAllClose').disabled = false; }, 1600);
         msg('sendAllMsg', `${t.sent || 0} sent, ${t.skipped || 0} skipped, ${t.failed} FAILED — see each row above.`, 'err');
       } else {
         setTimeout(() => {
           $('sendAllOverlay').classList.remove('open');
           setBusy(false);
-          load(); // refresh so Last Report Sent dates appear everywhere
+          load();
         }, 2000);
       }
     } catch (err) {
@@ -353,11 +529,27 @@
     sending = false;
   };
 
-  $('range').onchange = (e) => { range = e.target.value; renderAll(); };
+  // ---- navigation + filters ----------------------------------------------
+  $('backToVendors').onclick = () => { current = null; document.body.dataset.screen = 'vendors'; renderVendors(); window.scrollTo(0, 0); };
+  $('backBtn').onclick = () => { document.body.dataset.screen = 'detail'; window.scrollTo(0, 0); };
+  $('createBtn').onclick = () => { buildPaper(); document.body.dataset.screen = 'report'; window.scrollTo(0, 0); };
   $('refreshBtn').onclick = () => load(true);
-  $('createBtn').onclick = () => { buildPaper(); document.body.classList.add('showing-report'); window.scrollTo(0, 0); };
-  $('backBtn').onclick = () => document.body.classList.remove('showing-report');
   $('printBtn').onclick = () => window.print();
+
+  $('range').onchange = (e) => {
+    range = e.target.value;
+    renderVendors();
+    if (current) renderDetail();
+  };
+  $('sort').onchange = (e) => { sort = e.target.value; renderVendors(); };
+
+  let qTimer = null;
+  $('q').oninput = (e) => {
+    clearTimeout(qTimer);
+    const val = e.target.value.trim().toLowerCase();
+    qTimer = setTimeout(() => { query = val; renderVendors(); }, 120);
+  };
+
   $('copyBtn').onclick = async () => {
     try {
       await navigator.clipboard.write([new ClipboardItem({
