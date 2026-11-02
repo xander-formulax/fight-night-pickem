@@ -35,14 +35,19 @@ if (-not $VersionId) {
     }
   }
   if (-not $VersionId) {
+    # Auto-detect is a convenience, not a dependency: older CLI builds reject
+    # -i, and the account can change under us. Ask rather than give up.
     Write-Host ''
-    Write-Host 'No draft version found — every version is live or deprecated.' -ForegroundColor Yellow
-    Write-Host 'In the Developer Center: Vendor Reports -> Manage -> App Versions -> + New version,'
-    Write-Host 'then run this again.'
-    Pause-IfClicked
-    exit 1
+    Write-Host 'Could not read the draft version automatically.' -ForegroundColor Yellow
+    Write-Host 'Find it with:  mapps app-version:list   (pick Vendor Reports, look for status draft)'
+    Write-Host 'If every version is live or deprecated, make one first:'
+    Write-Host '  Developer Center -> Vendor Reports -> Manage -> App Versions -> + New version'
+    Write-Host ''
+    $VersionId = (Read-Host 'App version id').Trim()
+    if (-not $VersionId) { Write-Host 'Nothing entered — stopping.'; Pause-IfClicked; exit 1 }
+  } else {
+    Write-Host "Draft version is $VersionId"
   }
-  Write-Host "Draft version is $VersionId"
 } else {
   Write-Host ''
   Write-Host "== 2/4  Using version $VersionId =="
