@@ -1,5 +1,28 @@
 # CompanyCam Customer Autofill (Dragon Transports)
 
+## Live setup (2026-11-10)
+
+| | |
+|---|---|
+| monday app | Company Cam Sync, app id `12658136`, live version `19928202` (v2), single region |
+| Service URL | `https://f674f-service-31933862-cfed8251.us.monday.app` |
+| CompanyCam webhook | id `315826`, scope `project.created`, URL `<service>/webhooks/companycam` |
+| Nightly job | `nightly-sweep`, `0 8 * * *` UTC, covers the last `SWEEP_DAYS=2` days |
+| Env | `DRY_RUN=false`, `TEST_NAME_FILTER` removed |
+
+Tested end to end on 2026-11-10: dry run, create, reuse by phone, and the bad-email fallback.
+
+**Each new monday code version gets its own URL.** Prefer `mapps code:push -a 12658136 -i 19928202 -f` (force-push to the live version) so the URL doesn't change. If you do create a new version, repoint the webhook after promoting it:
+
+```powershell
+$cc = Read-Host 'CompanyCam API token'
+Invoke-RestMethod -Method Patch -Uri 'https://api.companycam.com/public_api/v1/webhooks/315826' -Headers @{ Authorization = "Bearer $cc" } -ContentType 'application/json' -Body '{"webhook":{"url":"<NEW_URL>/webhooks/companycam"}}'
+```
+
+The CompanyCam personal access token has an expiry date. When it runs out, every run logs a `401` error. Make a new token (Customers read+write, Projects read, Webhooks read+write) and run `mapps code:secret -i 12658136 -m set -k COMPANYCAM_API_TOKEN -v '<token>'`.
+
+If CompanyCam rejects a customer's email (422), the customer is created with the phone only, and the log entry includes a `note`.
+
 A monday code service. When the native monday → CompanyCam integration creates a project, this service fills in the project's **Customer** using the matching monday Jobs item. It reuses an existing customer when the phone or email matches, and creates one only when nothing matches.
 
 **It ships in dry run (`DRY_RUN` unset or anything other than `false`).** In dry run it logs what it would do and writes nothing to CompanyCam.
