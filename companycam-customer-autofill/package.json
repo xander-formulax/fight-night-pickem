@@ -1,0 +1,16 @@
+{
+  "name": "companycam-customer-autofill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dragon Transports: fill the CompanyCam project Customer from the matching monday Jobs item.",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@mondaycom/apps-sdk": "3.3.2"
+  }
+}
