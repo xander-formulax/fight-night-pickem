@@ -15,8 +15,9 @@ export async function processProject(projectId, { source, project: prefetched },
   const base = { source, projectId: id, dryRun: deps.cfg.dryRun };
   try {
     const result = await run(id, prefetched, deps);
-    const entry = { ...base, ...result };
-    await store.append(entry);
+    const { quiet, ...rest } = result;
+    const entry = { ...base, ...rest };
+    await store.append(entry, { persist: !quiet });
     if (!deps.cfg.dryRun && (entry.outcome === 'linked-existing' || entry.outcome === 'created-and-linked')) {
       await store.markDone(id, entry.outcome);
     }
@@ -31,19 +32,18 @@ export async function processProject(projectId, { source, project: prefetched },
 }
 
 async function run(id, prefetched, { cc, monday, store, cfg }) {
-  if (await store.isDone(id)) return { outcome: 'skipped', reason: 'already-processed' };
-
   // 2. Project + creator check
   const project = prefetched?.creator_id ? prefetched : await cc.getProject(id);
   const projectName = collapseWhitespace(project?.name);
   const ctx = { projectName };
   if (String(project?.creator_id) !== String(cfg.creatorId)) {
-    return { ...ctx, outcome: 'skipped', reason: `creator ${project?.creator_id} is not the integration user` };
+    return { ...ctx, outcome: 'skipped', quiet: true, reason: `creator ${project?.creator_id} is not the integration user` };
   }
-  if (project.archived) return { ...ctx, outcome: 'skipped', reason: 'project archived' };
+  if (project.archived) return { ...ctx, outcome: 'skipped', quiet: true, reason: 'project archived' };
   if (cfg.testNameFilter && !projectName.toLowerCase().includes(cfg.testNameFilter.toLowerCase())) {
-    return { ...ctx, outcome: 'skipped', reason: `TEST_NAME_FILTER "${cfg.testNameFilter}" not in name` };
+    return { ...ctx, outcome: 'skipped', quiet: true, reason: `TEST_NAME_FILTER "${cfg.testNameFilter}" not in name` };
   }
+  if (await store.isDone(id)) return { ...ctx, outcome: 'skipped', quiet: true, reason: 'already-processed' };
 
   // 3. Customer already set?
   const existing = await cc.getProjectCustomer(id);
@@ -147,6 +147,7 @@ export async function sweep(deps, { days }) {
     if (reachedCutoff || !next) break;
     after = next;
   }
+  await deps.store.flush();
   return summary;
 }
 

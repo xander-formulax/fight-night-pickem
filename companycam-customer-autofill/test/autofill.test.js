@@ -57,7 +57,7 @@ function fakes({ project, customer = null, items = [], customers = [] }) {
     listProjects: async () => ({ items: [project], next: null }),
   };
   const monday = { findItemsByName: async () => items };
-  const store = createStore(memoryStorage());
+  const store = createStore(memoryStorage(), { minGapMs: 0, flushDelayMs: 0 });
   return { calls, deps: (cfg = {}) => ({ cc, monday, store, cfg: { dryRun: false, creatorId: CREATOR, boardId: 'b', ...cfg } }) };
 }
 
@@ -149,4 +149,17 @@ test('sweep processes recent integration projects only', async () => {
   const s = await sweep(f.deps({ dryRun: true }), { days: 14 });
   assert.equal(s.candidates, 1);
   assert.equal(s.outcomes['would-create-and-link'], 1);
+});
+
+test('log entries are batched and noise skips stay out of storage', async () => {
+  const mem = memoryStorage();
+  let sets = 0;
+  const counting = { ...mem, set: async (k, v) => { sets++; return mem.set(k, v); } };
+  const store = createStore(counting, { minGapMs: 0, flushDelayMs: 50 });
+  for (let i = 0; i < 5; i++) store.append({ projectId: String(i), outcome: 'skipped' });
+  store.append({ projectId: 'x', outcome: 'skipped' }, { persist: false });
+  const log = await store.readLog();
+  assert.equal(log.length, 5);
+  assert.equal(log[0].projectId, '4'); // newest first
+  assert.equal(sets, 1);
 });
