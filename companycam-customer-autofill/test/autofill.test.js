@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { normalizePhone, last10, normalizeEmail, nameKey } from '../src/normalize.js';
 import { processProject, sweep } from '../src/autofill.js';
 import { createStore, memoryStorage } from '../src/store.js';
+import { CompanyCamError } from '../src/companycam.js';
 import { verifySignature, parseEvent } from '../src/server.js';
 
 const CREATOR = '4362847';
@@ -162,4 +163,30 @@ test('log entries are batched and noise skips stay out of storage', async () => 
   assert.equal(log.length, 5);
   assert.equal(log[0].projectId, '4'); // newest first
   assert.equal(sets, 1);
+});
+
+test('email rejected by CompanyCam -> create with phone only', async () => {
+  const f = fakes({ project: proj, items: [{ ...item, email: 'test@test.com' }] });
+  const d = f.deps();
+  const orig = d.cc.createCustomer;
+  d.cc.createCustomer = async (c) => {
+    if (c.email || c.contacts.some((k) => k.email)) {
+      throw new CompanyCamError(422, { errors: [{ code: 'validation_failed', message: 'Email address is invalid', field: 'email_address' }] }, 'POST /customers');
+    }
+    return orig(c);
+  };
+  const r = await processProject('1', { source: 't' }, d);
+  assert.equal(r.outcome, 'created-and-linked');
+  assert.match(r.note, /rejected email/);
+  const created = f.calls.find((c) => c[0] === 'createCustomer')[1];
+  assert.deepEqual(created, { name: 'Jane Doe', phone_number: '+15753907884', contacts: [{ name: 'Jane Doe', phone_number: '+15753907884' }] });
+});
+
+test('email rejected and no phone -> error, nothing linked', async () => {
+  const f = fakes({ project: proj, items: [{ ...item, phone: '', email: 'test@test.com' }] });
+  const d = f.deps();
+  d.cc.createCustomer = async () => { throw new CompanyCamError(422, { errors: [{ message: 'Email address is invalid' }] }, 'POST /customers'); };
+  const r = await processProject('1', { source: 't' }, d);
+  assert.equal(r.outcome, 'error');
+  assert.ok(!f.calls.some((c) => c[0] === 'setProjectCustomer'));
 });

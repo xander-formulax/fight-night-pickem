@@ -112,14 +112,33 @@ async function run(id, prefetched, { cc, monday, store, cfg }) {
   if (again) return { ...ctx, outcome: 'skipped', reason: 'customer set meanwhile', customerId: again.id };
 
   let customer = match;
-  if (!customer) customer = await cc.createCustomer(newCustomer);
+  let note;
+  if (!customer) {
+    try {
+      customer = await cc.createCustomer(newCustomer);
+    } catch (e) {
+      // CompanyCam rejects some syntactically valid emails (e.g. test.com). Keep the customer, drop the email.
+      if (!(phone && isEmailRejection(e))) throw e;
+      customer = await cc.createCustomer(withoutEmail(newCustomer));
+      note = `CompanyCam rejected email "${email}"; created with phone only`;
+    }
+  }
   await cc.setProjectCustomer(id, customer.id);
   return {
     ...ctx,
     outcome: match ? 'linked-existing' : 'created-and-linked',
     customerId: customer.id,
     customerName: customer.name,
+    ...(note ? { note } : {}),
   };
+}
+
+function isEmailRejection(e) {
+  return e?.status === 422 && /email/i.test(JSON.stringify(e.body ?? e.message));
+}
+
+function withoutEmail({ email, contacts, ...rest }) {
+  return { ...rest, contacts: (contacts || []).map(({ email: _e, ...c }) => c) };
 }
 
 function dedupe(customers) {
