@@ -19,7 +19,7 @@ $cc = Read-Host 'CompanyCam API token'
 Invoke-RestMethod -Method Patch -Uri 'https://api.companycam.com/public_api/v1/webhooks/315826' -Headers @{ Authorization = "Bearer $cc" } -ContentType 'application/json' -Body '{"webhook":{"url":"<NEW_URL>/webhooks/companycam"}}'
 ```
 
-The CompanyCam personal access token has an expiry date. When it runs out, every run logs a `401` error. Make a new token (Customers read+write, Projects read, Webhooks read+write) and run `mapps code:secret -i 12658136 -m set -k COMPANYCAM_API_TOKEN -v '<token>'`.
+The CompanyCam personal access token is set to never expire. If it's ever revoked, every run logs a `401` error. Make a new token (Customers read+write, Projects read, Webhooks read+write) and run `mapps code:secret -i 12658136 -m set -k COMPANYCAM_API_TOKEN -v '<token>'`.
 
 If CompanyCam rejects a customer's email (422), the customer is created with the phone only, and the log entry includes a `note`.
 
