@@ -7,14 +7,23 @@ let envs;
 try { secrets = new SecretsManager(); } catch { secrets = null; }
 try { envs = new EnvironmentVariablesManager(); } catch { envs = null; }
 
-function read(manager, key) {
+// When the manager has any keys we're on monday code and it is the source of truth. Do NOT fall back to
+// process.env there: monday code also copies env vars into process.env at container start, so a key
+// deleted with `mapps code:env -m delete` would otherwise keep its old value until the next restart
+// (that is how TEST_NAME_FILTER survived its deletion on 2026-11-10).
+export function readFrom(manager, key, processEnv = process.env) {
+  let authoritative = false;
   try {
+    const keys = manager?.getKeys?.();
+    authoritative = Array.isArray(keys) && keys.length > 0;
     const v = manager?.get(key);
     if (v !== undefined && v !== null && v !== '') return String(v);
   } catch { /* fall through */ }
-  const v = process.env[key];
+  if (authoritative) return undefined;
+  const v = processEnv[key];
   return v === undefined || v === '' ? undefined : v;
 }
+const read = (manager, key) => readFrom(manager, key);
 
 export const secret = (key) => read(secrets, key);
 export const env = (key) => read(envs, key);

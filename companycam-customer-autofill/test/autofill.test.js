@@ -190,3 +190,13 @@ test('email rejected and no phone -> error, nothing linked', async () => {
   assert.equal(r.outcome, 'error');
   assert.ok(!f.calls.some((c) => c[0] === 'setProjectCustomer'));
 });
+
+test('deleted monday code env var does not fall back to stale process.env', async () => {
+  const { readFrom } = await import('../src/config.js');
+  const mgr = { getKeys: () => ['DRY_RUN'], get: (k) => (k === 'DRY_RUN' ? 'false' : undefined) };
+  assert.equal(readFrom(mgr, 'TEST_NAME_FILTER', { TEST_NAME_FILTER: 'XANDER TEST' }), undefined);
+  assert.equal(readFrom(mgr, 'DRY_RUN', {}), 'false');
+  // Off monday code (no keys) process.env still works for local dev/tests.
+  const empty = { getKeys: () => [], get: () => undefined };
+  assert.equal(readFrom(empty, 'TEST_NAME_FILTER', { TEST_NAME_FILTER: 'x' }), 'x');
+});
